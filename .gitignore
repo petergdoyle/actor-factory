@@ -1,0 +1,5 @@
+storyforge-ai-docs/
+# Dev logs and pids
+*.log
+*.pid
+*.db
