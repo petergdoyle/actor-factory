@@ -10,6 +10,7 @@ from src.actor_factory.models.core import (
     Skill,
     Specialization,
     Composition,
+    LLMProviderConfig,
 )
 
 class IStorageLayer(ABC):
@@ -100,6 +101,23 @@ class IStorageLayer(ABC):
 
     @abstractmethod
     def delete_composition(self, comp_id: UUID) -> None:
+        pass
+
+    # ── LLM Provider Config ──
+    @abstractmethod
+    def list_llm_configs(self) -> List[LLMProviderConfig]:
+        pass
+
+    @abstractmethod
+    def get_llm_config(self, config_id: str) -> Optional[LLMProviderConfig]:
+        pass
+
+    @abstractmethod
+    def save_llm_config(self, config: LLMProviderConfig) -> None:
+        pass
+
+    @abstractmethod
+    def delete_llm_config(self, config_id: str) -> None:
         pass
 
     # ── Legacy Capabilities / Profiles ──

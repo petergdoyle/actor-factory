@@ -27,8 +27,10 @@ ActorFactory is not a single application; it is the universal intelligence engin
 
 ## 🛠️ Management Workspace Features
 
-ActorFactory includes a modern, glassmorphic Next.js workspace for managing and testing actor compositions:
+ActorFactory includes a modern, glassmorphic Next.js workspace for managing, configuring, and testing actor compositions:
 
+- 🟢 **Live Stack Health Status**: Persistent header badges (`🟢 API Connected`, `🟢 LLM: llama3`) polling system health and latency.
+- ⚙️ **LLM Configurations**: Manage LLM providers (Ollama Local, Ollama Remote, OpenAI, Anthropic, AWS Bedrock, Mock), base URLs, API keys, test connection latency, and discover available models.
 - 🌐 **Domains**: Define problem domain operational contexts and default JSON parameter schemas.
 - 🎭 **Actors (Personas)**: Define expert identities, core concerns, domain vocabulary, thinking patterns, and quality criteria.
 - ⚡ **Skills**: Define cross-cutting executable capabilities with output formats, validation levels (`machine`, `structural`, `heuristic`), validation rules, quality patterns, and anti-patterns.
@@ -83,7 +85,7 @@ make test
 
 All core architectural designs, specification catalogs, and research documents are maintained under the `docs/` folder:
 
-- 🏛️ **[System Architecture](file:///Users/peterdoyle/Dev/actor-factory/docs/architecture.md)** — Core topology, 3D composition matrix, data models, validation spectrum, and API routes.
+- 🏛️ **[System Architecture](file:///Users/peterdoyle/Dev/actor-factory/docs/architecture.md)** — Core topology, 3D composition matrix, data models, validation spectrum, LLM configurations, and API routes.
 - 📐 **[AI Engineering Documentation](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/)**:
   - 🗺️ **[AI Strategy & Blueprint](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/ai-strategy.md)** — Multi-tiered AI application architecture blueprint.
   - 🧩 **[Persona × Skill Composition](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/persona-skill-composition.md)** — Building validatable AI expertise & feedback chains.

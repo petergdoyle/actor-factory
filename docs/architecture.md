@@ -17,6 +17,8 @@ flowchart TD
         SPC_UI["🔧 Specializations Manager"]
         CMP_UI["🔗 Composer & Catalog"]
         TST_UI["🧪 Test Bench Canvas"]
+        LLM_UI["⚙️ LLM Configurations"]
+        STK_UI["🟢 Stack Health Monitor"]
     end
 
     subgraph API["FastAPI Orchestration Gateway"]
@@ -33,16 +35,16 @@ flowchart TD
 
     subgraph LLM["Pluggable LLM Gateway"]
         MOCK["Mock Provider"]
-        OLLAMA["Local Ollama Daemon\n(llama3, mermaid-fixer)"]
+        OLLAMA["Local Ollama Daemon\n(llama3, gemma3:12b, mermaid-fixer)"]
         CLOUD["Cloud Providers\n(OpenAI, Claude, Bedrock)"]
     end
 
     UI -->|HTTP / SSE Streaming| API
     API <-->|CRUD & Persistence| DB
-    SEED -->|Populate Standard Matrix| DB
+    SEED -->|Populate Standard Matrix & LLM Configs| DB
     API --> COMPOSER
     COMPOSER --> ROUTER
-    ROUTER -->|Stream / Execute| LLM
+    ROUTER -->|Stream / Execute / Ping Health| LLM
     LLM -->|SSE Token Stream| UI
 ```
 
@@ -88,6 +90,7 @@ flowchart LR
 | **`Skill`** | Defines executable capability & output artifact rules | `name`, `description`, `output_format`, `validation_level` (`machine`, `structural`, `heuristic`, `human`), `validation_rules`, `quality_patterns`, `anti_patterns` |
 | **`Specialization`** | Defines platform/vendor expertise & detection rules | `name`, `description`, `services_and_patterns`, `constraints`, `examples`, `detection_keywords` |
 | **`Composition`** | Named profile linking an Actor, Skills, and Specializations | `name`, `actor_id`, `skill_ids`, `specialization_ids` |
+| **`LLMProviderConfig`** | Configuration & connection status for an LLM provider | `id`, `name`, `provider_type`, `base_url`, `api_key`, `active_model`, `is_active`, `status`, `available_models` |
 
 ---
 
@@ -106,6 +109,10 @@ Outputs produced by ActorFactory actors undergo multi-tier validation:
 
 ## 📡 API Architecture
 
+- **`GET /api/v1/health/stack`** — Checks live health status of API gateway and active LLM provider.
+- **`GET /api/v1/llm/configs`**, `POST /api/v1/llm/configs`, `DELETE /api/v1/llm/configs/{id}` — Manages provider configs.
+- **`POST /api/v1/llm/test`** — Tests connection, measures latency, and discovers available models.
+- **`POST /api/v1/llm/active`** — Sets the active default provider and model.
 - **`GET /api/v1/domains`**, `POST /api/v1/domains`, `DELETE /api/v1/domains/{id}`
 - **`GET /api/v1/actors`**, `POST /api/v1/actors`, `DELETE /api/v1/actors/{id}`
 - **`GET /api/v1/skills`**, `POST /api/v1/skills`, `DELETE /api/v1/skills/{id}`
@@ -113,7 +120,7 @@ Outputs produced by ActorFactory actors undergo multi-tier validation:
 - **`GET /api/v1/compositions`**, `POST /api/v1/compositions`, `DELETE /api/v1/compositions/{id}`
 - **`POST /api/v1/compose/preview`** — Compiles and previews system prompt in real-time.
 - **`POST /api/v1/orchestrate`** — Executes streaming LLM inference via SSE.
-- **`POST /api/v1/seed`** — Populates standard specification domain data.
+- **`POST /api/v1/seed`** — Populates standard matrix & provider data.
 
 ---
 

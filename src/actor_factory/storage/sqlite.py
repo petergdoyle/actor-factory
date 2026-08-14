@@ -11,6 +11,7 @@ from src.actor_factory.models.core import (
     Skill,
     Specialization,
     Composition,
+    LLMProviderConfig,
 )
 from src.actor_factory.storage.base import IStorageLayer
 
@@ -96,6 +97,19 @@ class SQLiteStorage(IStorageLayer):
                     actor_id TEXT NOT NULL,
                     skill_ids_json TEXT NOT NULL,
                     specialization_ids_json TEXT NOT NULL
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS llm_configs (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    provider_type TEXT NOT NULL,
+                    base_url TEXT,
+                    api_key TEXT,
+                    active_model TEXT NOT NULL,
+                    is_active INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    available_models_json TEXT NOT NULL
                 )
             """)
             conn.commit()
@@ -421,6 +435,86 @@ class SQLiteStorage(IStorageLayer):
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM compositions WHERE id = ?", (str(comp_id),))
+            conn.commit()
+
+    # ──────────────────────────────────────────────
+    # LLM PROVIDER CONFIG CRUD
+    # ──────────────────────────────────────────────
+    def list_llm_configs(self) -> List[LLMProviderConfig]:
+        configs = []
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, name, provider_type, base_url, api_key, active_model, is_active, status, available_models_json
+                FROM llm_configs
+            """)
+            for row in cursor.fetchall():
+                configs.append(
+                    LLMProviderConfig(
+                        id=row[0],
+                        name=row[1],
+                        provider_type=row[2],
+                        base_url=row[3],
+                        api_key=row[4],
+                        active_model=row[5],
+                        is_active=bool(row[6]),
+                        status=row[7],
+                        available_models=json.loads(row[8] or "[]")
+                    )
+                )
+        return configs
+
+    def get_llm_config(self, config_id: str) -> Optional[LLMProviderConfig]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, name, provider_type, base_url, api_key, active_model, is_active, status, available_models_json
+                FROM llm_configs WHERE id = ?
+            """, (config_id,))
+            row = cursor.fetchone()
+            if row:
+                return LLMProviderConfig(
+                    id=row[0],
+                    name=row[1],
+                    provider_type=row[2],
+                    base_url=row[3],
+                    api_key=row[4],
+                    active_model=row[5],
+                    is_active=bool(row[6]),
+                    status=row[7],
+                    available_models=json.loads(row[8] or "[]")
+                )
+            return None
+
+    def save_llm_config(self, config: LLMProviderConfig) -> None:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            # If this config is set active, deactivate others
+            if config.is_active:
+                cursor.execute("UPDATE llm_configs SET is_active = 0")
+
+            cursor.execute(
+                """INSERT OR REPLACE INTO llm_configs
+                   (id, name, provider_type, base_url, api_key, active_model, is_active, status, available_models_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    config.id,
+                    config.name,
+                    config.provider_type,
+                    config.base_url,
+                    config.api_key,
+                    config.active_model,
+                    1 if config.is_active else 0,
+                    config.status,
+                    json.dumps(config.available_models)
+                )
+            )
+            conn.commit()
+
+    def delete_llm_config(self, config_id: str) -> None:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM llm_configs WHERE id = ?", (config_id,))
             conn.commit()
 
     # ──────────────────────────────────────────────

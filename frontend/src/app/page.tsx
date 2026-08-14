@@ -1,18 +1,62 @@
 "use client";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import DomainManager from './components/DomainManager';
 import ActorManager from './components/ActorManager';
 import SkillManager from './components/SkillManager';
 import SpecializationManager from './components/SpecializationManager';
 import Composer, { Composition } from './components/Composer';
 import TestBench from './components/TestBench';
+import LLMConfigManager from './components/LLMConfigManager';
 
-type Tab = 'domains' | 'actors' | 'skills' | 'specializations' | 'composer' | 'testbench';
+type Tab = 'domains' | 'actors' | 'skills' | 'specializations' | 'composer' | 'testbench' | 'llm_configs';
+
+interface StackHealth {
+  api_status: 'online' | 'offline';
+  llm_status: 'online' | 'offline' | 'unconfigured';
+  active_provider: string;
+  active_model: string;
+  latency_ms: number;
+}
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('domains');
   const [activeComposition, setActiveComposition] = useState<Composition | null>(null);
   const [initialPrompt, setInitialPrompt] = useState<string>('');
+
+  // Stack Health State
+  const [stackHealth, setStackHealth] = useState<StackHealth>({
+    api_status: 'offline',
+    llm_status: 'offline',
+    active_provider: 'Connecting...',
+    active_model: 'mock',
+    latency_ms: 0
+  });
+
+  const checkHealth = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/health/stack");
+      if (res.ok) {
+        const data = await res.json();
+        setStackHealth({
+          api_status: data.api_status || 'online',
+          llm_status: data.llm_status || 'offline',
+          active_provider: data.active_provider || 'Ollama (Local)',
+          active_model: data.active_model || 'llama3',
+          latency_ms: data.latency_ms || 0
+        });
+      } else {
+        setStackHealth(prev => ({ ...prev, api_status: 'offline', llm_status: 'offline' }));
+      }
+    } catch (e) {
+      setStackHealth(prev => ({ ...prev, api_status: 'offline', llm_status: 'offline' }));
+    }
+  };
+
+  useEffect(() => {
+    checkHealth();
+    const interval = setInterval(checkHealth, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSelectForTesting = (comp: Composition, prompt: string) => {
     setActiveComposition(comp);
@@ -21,7 +65,7 @@ export default function Home() {
   };
 
   const handleSeedData = async () => {
-    if (!confirm("Seed database with default Domains, Personas, Skills, and Specializations from AI Engineering specifications?")) return;
+    if (!confirm("Seed database with default Domains, Personas, Skills, Specializations, and LLM Configs?")) return;
     try {
       const res = await fetch("http://localhost:8000/api/v1/seed", { method: "POST" });
       if (res.ok) {
@@ -80,10 +124,31 @@ export default function Home() {
           >
             🧪 Test Bench
           </button>
+          <button 
+            className={`tab-btn ${activeTab === 'llm_configs' ? 'active' : ''}`}
+            onClick={() => setActiveTab('llm_configs')}
+          >
+            ⚙️ LLM Configurations
+          </button>
         </nav>
 
-        {/* Action Controls */}
-        <div style={{ display: 'flex', gap: '8px' }}>
+        {/* Stack Status & Action Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Stack Health Status Indicators */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span className={`badge ${stackHealth.api_status === 'online' ? 'success' : ''}`}>
+              {stackHealth.api_status === 'online' ? '🟢 API Connected' : '🔴 API Offline'}
+            </span>
+
+            <span className={`badge ${stackHealth.llm_status === 'online' ? 'success' : stackHealth.llm_status === 'unconfigured' ? 'warning' : ''}`}>
+              {stackHealth.llm_status === 'online' 
+                ? `🟢 LLM: ${stackHealth.active_model}` 
+                : stackHealth.llm_status === 'unconfigured' 
+                ? `⚠️ LLM Unconfigured` 
+                : `🔴 LLM Offline`}
+            </span>
+          </div>
+
           <button 
             className="btn-secondary" 
             style={{ fontSize: '12px', padding: '6px 12px' }}
@@ -103,6 +168,7 @@ export default function Home() {
         {activeTab === 'specializations' && <SpecializationManager />}
         {activeTab === 'composer' && <Composer onSelectForTesting={handleSelectForTesting} />}
         {activeTab === 'testbench' && <TestBench activeComposition={activeComposition} initialPrompt={initialPrompt} />}
+        {activeTab === 'llm_configs' && <LLMConfigManager onConfigChanged={checkHealth} />}
       </main>
     </div>
   );

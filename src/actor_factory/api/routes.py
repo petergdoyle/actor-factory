@@ -1,6 +1,8 @@
+import time
+import httpx
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from uuid import UUID
 
@@ -13,6 +15,7 @@ from src.actor_factory.models.core import (
     Skill,
     Specialization,
     Composition,
+    LLMProviderConfig,
     actor_to_capability,
     skill_to_capability,
     specialization_to_capability,
@@ -31,6 +34,150 @@ def get_storage():
     # Auto-seed on first load if database is empty
     seed_default_data(storage, force=False)
     return storage
+
+
+# ──────────────────────────────────────────────
+# STACK HEALTH ENDPOINT
+# ──────────────────────────────────────────────
+@router.get("/health/stack")
+def check_stack_health(storage: SQLiteStorage = Depends(get_storage)):
+    configs = storage.list_llm_configs()
+    active_cfg = next((c for c in configs if c.is_active), None)
+    if not active_cfg and configs:
+        active_cfg = configs[0]
+
+    llm_status = "offline"
+    latency_ms = 0
+    active_model_str = active_cfg.active_model if active_cfg else "mock"
+    provider_name = active_cfg.name if active_cfg else "Mock (Testing)"
+
+    if active_cfg:
+        if active_cfg.provider_type == "mock":
+            llm_status = "online"
+        elif active_cfg.provider_type == "ollama":
+            url = f"{(active_cfg.base_url or 'http://localhost:11434').rstrip('/')}/api/tags"
+            t0 = time.time()
+            try:
+                with httpx.Client(timeout=3.0) as client:
+                    resp = client.get(url)
+                    if resp.status_code == 200:
+                        llm_status = "online"
+                        latency_ms = int((time.time() - t0) * 1000)
+            except Exception:
+                llm_status = "offline"
+        elif active_cfg.api_key or active_cfg.base_url:
+            llm_status = "online" if active_cfg.api_key else "unconfigured"
+
+    return {
+        "api_status": "online",
+        "llm_status": llm_status,
+        "active_provider": provider_name,
+        "active_provider_id": active_cfg.id if active_cfg else "mock",
+        "active_model": active_model_str,
+        "base_url": active_cfg.base_url if active_cfg else None,
+        "latency_ms": latency_ms,
+        "timestamp": time.time()
+    }
+
+
+# ──────────────────────────────────────────────
+# LLM PROVIDER CONFIG ENDPOINTS
+# ──────────────────────────────────────────────
+@router.get("/llm/configs", response_model=List[LLMProviderConfig])
+def list_llm_configs(storage: SQLiteStorage = Depends(get_storage)):
+    return storage.list_llm_configs()
+
+@router.post("/llm/configs", response_model=LLMProviderConfig)
+def save_llm_config(config: LLMProviderConfig, storage: SQLiteStorage = Depends(get_storage)):
+    storage.save_llm_config(config)
+    return config
+
+@router.delete("/llm/configs/{config_id}")
+def delete_llm_config(config_id: str, storage: SQLiteStorage = Depends(get_storage)):
+    storage.delete_llm_config(config_id)
+    return {"status": "deleted", "id": config_id}
+
+class TestLLMPayload(BaseModel):
+    config_id: str
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    provider_type: Optional[str] = None
+
+@router.post("/llm/test")
+def test_llm_connection(payload: TestLLMPayload, storage: SQLiteStorage = Depends(get_storage)):
+    cfg = storage.get_llm_config(payload.config_id)
+    base_url = payload.base_url or (cfg.base_url if cfg else None) or "http://localhost:11434"
+    provider_type = payload.provider_type or (cfg.provider_type if cfg else "ollama")
+
+    if provider_type == "mock":
+        return {
+            "status": "online",
+            "message": "Mock provider active and operational.",
+            "latency_ms": 1,
+            "models": ["mock"]
+        }
+    elif provider_type == "ollama":
+        url = f"{base_url.rstrip('/')}/api/tags"
+        t0 = time.time()
+        try:
+            with httpx.Client(timeout=5.0) as client:
+                resp = client.get(url)
+                if resp.status_code == 200:
+                    latency = int((time.time() - t0) * 1000)
+                    data = resp.json()
+                    models = [m.get("name", "") for m in data.get("models", [])]
+                    # Update config status in storage
+                    if cfg:
+                        cfg.status = "online"
+                        cfg.available_models = models
+                        storage.save_llm_config(cfg)
+                    return {
+                        "status": "online",
+                        "message": f"Successfully connected to Ollama instance at {base_url}.",
+                        "latency_ms": latency,
+                        "models": models
+                    }
+                else:
+                    return {
+                        "status": "offline",
+                        "message": f"Ollama returned HTTP status {resp.status_code}.",
+                        "latency_ms": 0,
+                        "models": []
+                    }
+        except Exception as e:
+            if cfg:
+                cfg.status = "offline"
+                storage.save_llm_config(cfg)
+            return {
+                "status": "offline",
+                "message": f"Could not connect to Ollama at {base_url}: {str(e)}",
+                "latency_ms": 0,
+                "models": []
+            }
+    else:
+        # Cloud providers
+        has_key = bool(payload.api_key or (cfg and cfg.api_key))
+        return {
+            "status": "online" if has_key else "unconfigured",
+            "message": "API key configured." if has_key else "API key missing.",
+            "latency_ms": 15 if has_key else 0,
+            "models": cfg.available_models if cfg else []
+        }
+
+class SetActiveLLMPayload(BaseModel):
+    config_id: str
+    active_model: str
+
+@router.post("/llm/active")
+def set_active_llm(payload: SetActiveLLMPayload, storage: SQLiteStorage = Depends(get_storage)):
+    cfg = storage.get_llm_config(payload.config_id)
+    if not cfg:
+        raise HTTPException(status_code=404, detail="LLM config not found")
+    
+    cfg.is_active = True
+    cfg.active_model = payload.active_model
+    storage.save_llm_config(cfg)
+    return {"status": "success", "active_config": cfg}
 
 
 # ──────────────────────────────────────────────
@@ -172,7 +319,7 @@ def preview_composition(payload: ComposePreviewPayload, storage: SQLiteStorage =
 @router.post("/seed")
 def seed_data(storage: SQLiteStorage = Depends(get_storage)):
     seed_default_data(storage, force=True)
-    return {"status": "success", "message": "Default domains, actors, skills, and specializations seeded."}
+    return {"status": "success", "message": "Default domains, actors, skills, specializations, and LLM configs seeded."}
 
 
 # ──────────────────────────────────────────────

@@ -1,9 +1,78 @@
 from uuid import uuid4
-from src.actor_factory.models.core import Domain, Actor, Skill, Specialization, Composition
+from src.actor_factory.models.core import Domain, Actor, Skill, Specialization, Composition, LLMProviderConfig
 from src.actor_factory.storage.sqlite import SQLiteStorage
 
 def seed_default_data(storage: SQLiteStorage, force: bool = False):
-    # Check if empty or forced
+    # Check LLM configs seed
+    existing_llm_configs = storage.list_llm_configs()
+    if not existing_llm_configs or force:
+        llm_configs = [
+            LLMProviderConfig(
+                id="ollama_local",
+                name="Ollama (Local)",
+                provider_type="ollama",
+                base_url="http://localhost:11434",
+                active_model="llama3",
+                is_active=True,
+                status="online",
+                available_models=["llama3", "llama3.2", "mistral", "gemma3:12b", "mermaid-fixer"]
+            ),
+            LLMProviderConfig(
+                id="ollama_remote",
+                name="Ollama (Remote)",
+                provider_type="ollama",
+                base_url="http://192.168.1.100:11434",
+                active_model="llama3",
+                is_active=False,
+                status="unconfigured",
+                available_models=[]
+            ),
+            LLMProviderConfig(
+                id="openai",
+                name="OpenAI API",
+                provider_type="openai",
+                base_url="https://api.openai.com/v1",
+                api_key="",
+                active_model="gpt-4o",
+                is_active=False,
+                status="unconfigured",
+                available_models=["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"]
+            ),
+            LLMProviderConfig(
+                id="anthropic",
+                name="Anthropic Claude",
+                provider_type="anthropic",
+                base_url="https://api.anthropic.com",
+                api_key="",
+                active_model="claude-3-5-sonnet",
+                is_active=False,
+                status="unconfigured",
+                available_models=["claude-3-5-sonnet", "claude-3-5-haiku", "claude-3-opus"]
+            ),
+            LLMProviderConfig(
+                id="bedrock",
+                name="AWS Bedrock",
+                provider_type="bedrock",
+                base_url="https://bedrock-runtime.us-east-1.amazonaws.com",
+                active_model="anthropic.claude-3-haiku-20240307-v1:0",
+                is_active=False,
+                status="unconfigured",
+                available_models=["anthropic.claude-3-haiku-20240307-v1:0", "anthropic.claude-3-5-sonnet-20240620-v1:0"]
+            ),
+            LLMProviderConfig(
+                id="mock",
+                name="Mock (Testing)",
+                provider_type="mock",
+                active_model="mock",
+                is_active=False,
+                status="online",
+                available_models=["mock"]
+            )
+        ]
+        for cfg in llm_configs:
+            storage.save_llm_config(cfg)
+
+    # Check if domains exist
     existing_domains = storage.list_domains()
     if existing_domains and not force:
         return
@@ -222,7 +291,7 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
         ],
         anti_patterns=[
             "Verbs in URLs: /getUsers, /createActor",
-            "Inconsistent error shapes across endpoints",
+            "Inconsistent error formats across endpoints",
             "Exposing internal database IDs or stack traces"
         ]
     )

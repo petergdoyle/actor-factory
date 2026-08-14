@@ -72,6 +72,22 @@ class Composition(BaseModel):
 
 
 # ──────────────────────────────────────────────
+# LLM Provider Configuration
+# ──────────────────────────────────────────────
+
+class LLMProviderConfig(BaseModel):
+    id: str  # e.g., "ollama_local", "ollama_remote", "openai", "anthropic", "bedrock", "mock"
+    name: str  # e.g., "Ollama (Local)"
+    provider_type: Literal["ollama", "openai", "anthropic", "bedrock", "mock"]
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    active_model: str = "mock"
+    is_active: bool = False
+    status: Literal["online", "offline", "unconfigured"] = "unconfigured"
+    available_models: List[str] = Field(default_factory=list)
+
+
+# ──────────────────────────────────────────────
 # Backward-compatible models (existing orchestration)
 # ──────────────────────────────────────────────
 
