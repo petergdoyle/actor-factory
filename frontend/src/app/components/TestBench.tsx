@@ -2,8 +2,22 @@
 import { useState, useRef, useEffect } from 'react';
 import { Composition } from './Composer';
 
+export interface LLMOption {
+  id: string;
+  name: string;
+  model_id: string;
+}
+
 export default function TestBench({ activeComposition, initialPrompt }: { activeComposition?: Composition | null, initialPrompt?: string }) {
-  const [modelId, setModelId] = useState('mock');
+  const [modelId, setModelId] = useState('ollama:gemma4:12b');
+  const [availableModelOptions, setAvailableModelOptions] = useState<LLMOption[]>([
+    { id: 'mock', name: 'Mock Provider (Testing)', model_id: 'mock' },
+    { id: 'ollama_gemma4', name: 'Ollama (gemma4:12b)', model_id: 'ollama:gemma4:12b' },
+    { id: 'ollama_llama3', name: 'Ollama (llama3)', model_id: 'ollama:llama3' },
+    { id: 'openai', name: 'OpenAI (gpt-4o)', model_id: 'openai:gpt-4o' },
+    { id: 'anthropic', name: 'Anthropic (claude-3-5-sonnet)', model_id: 'anthropic:claude-3-5-sonnet' },
+  ]);
+
   const [domainName, setDomainName] = useState('Software Engineering');
   const [domainParams, setDomainParams] = useState('{\n  "architecture_style": "microservices",\n  "cloud_provider": "AWS"\n}');
   
@@ -34,6 +48,51 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
       setPersonaName(activeComposition.name);
     }
   }, [activeComposition]);
+
+  // Load configured models from backend
+  useEffect(() => {
+    const loadLLMConfigs = async () => {
+      try {
+        const res = await fetch("http://localhost:8000/api/v1/llm/configs");
+        if (res.ok) {
+          const configs = await res.json();
+          const options: LLMOption[] = [
+            { id: 'mock', name: 'Mock Provider (Testing)', model_id: 'mock' }
+          ];
+
+          configs.forEach((cfg: any) => {
+            if (cfg.available_models && cfg.available_models.length > 0) {
+              cfg.available_models.forEach((m: string) => {
+                options.push({
+                  id: `${cfg.id}_${m}`,
+                  name: `${cfg.name} (${m})`,
+                  model_id: cfg.provider_type === 'ollama' ? `ollama:${m}` : `${cfg.provider_type}:${m}`
+                });
+              });
+            } else if (cfg.active_model) {
+              options.push({
+                id: `${cfg.id}_${cfg.active_model}`,
+                name: `${cfg.name} (${cfg.active_model})`,
+                model_id: cfg.provider_type === 'ollama' ? `ollama:${cfg.active_model}` : `${cfg.provider_type}:${cfg.active_model}`
+              });
+            }
+          });
+
+          if (options.length > 1) {
+            setAvailableModelOptions(options);
+            // Default to first ollama or non-mock option
+            const firstOllama = options.find(o => o.model_id.includes("gemma") || o.model_id.startsWith("ollama:"));
+            if (firstOllama) {
+              setModelId(firstOllama.model_id);
+            }
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    loadLLMConfigs();
+  }, []);
 
   const handleGenerate = async () => {
     if (!rawRequirements.trim()) return;
@@ -175,8 +234,9 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Model Provider:</span>
               <select value={modelId} onChange={e => setModelId(e.target.value)} disabled={isStreaming} style={{ width: 'auto', padding: '4px 10px' }}>
-                <option value="mock">Mock Provider</option>
-                <option value="ollama:llama3">Ollama (llama3)</option>
+                {availableModelOptions.map(opt => (
+                  <option key={opt.id} value={opt.model_id}>{opt.name}</option>
+                ))}
               </select>
             </div>
           </div>
