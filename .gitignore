@@ -1,5 +1,13 @@
-storyforge-ai-docs/
-# Dev logs and pids
+# Dev logs, pids, databases
 *.log
 *.pid
 *.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
