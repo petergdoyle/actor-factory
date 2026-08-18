@@ -21,7 +21,7 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
                 id="ollama_remote",
                 name="Ollama (Remote)",
                 provider_type="ollama",
-                base_url="http://192.168.1.100:11434",
+                base_url="http://192.168.20.11:11434",
                 active_model="llama3",
                 is_active=False,
                 status="unconfigured",
@@ -76,6 +76,19 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
     existing_domains = storage.list_domains()
     if existing_domains and not force:
         return
+
+    # Clear existing entities when force-seeding to avoid duplicates
+    if force:
+        for d in storage.list_domains():
+            storage.delete_domain(d.id)
+        for a in storage.list_actors():
+            storage.delete_actor(a.id)
+        for s in storage.list_skills():
+            storage.delete_skill(s.id)
+        for sp in storage.list_specializations():
+            storage.delete_specialization(sp.id)
+        for c in storage.list_compositions():
+            storage.delete_composition(c.id)
 
     # 1. DOMAINS
     domain_se = Domain(

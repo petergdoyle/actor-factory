@@ -460,3 +460,152 @@ textarea {
 .empty-state-icon {
   font-size: 40px;
 }
+
+
+/* ──────────────────────────────────────────────
+   Documentation Content Styles
+   ────────────────────────────────────────────── */
+
+.docs-content {
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text-secondary);
+}
+
+.docs-content h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 16px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.docs-content h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 32px 0 12px 0;
+}
+
+.docs-content h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 24px 0 8px 0;
+}
+
+.docs-content h4 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 20px 0 6px 0;
+}
+
+.docs-content p {
+  margin: 0 0 12px 0;
+}
+
+.docs-content ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px 0;
+}
+
+.docs-content ul li {
+  position: relative;
+  padding-left: 20px;
+  margin-bottom: 6px;
+}
+
+.docs-content ul li::before {
+  content: '•';
+  position: absolute;
+  left: 4px;
+  color: var(--text-accent);
+}
+
+.docs-content hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 24px 0;
+}
+
+.docs-content strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.docs-content em {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.docs-content a {
+  color: var(--text-accent);
+  text-decoration: none;
+}
+
+.docs-content a:hover {
+  text-decoration: underline;
+}
+
+.docs-content .inline-code {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: 'Geist Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--text-accent);
+}
+
+.docs-content .code-block {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin: 16px 0;
+}
+
+.docs-content .code-block code {
+  font-family: 'Geist Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #e2e8f0;
+  white-space: pre;
+}
+
+.docs-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 13px;
+}
+
+.docs-content table td {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  vertical-align: top;
+}
+
+.docs-content table tr:first-child td {
+  background: var(--bg-tertiary);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.docs-content table tr:hover td {
+  background: rgba(107, 124, 255, 0.04);
+}
+
+.docs-content blockquote {
+  border-left: 3px solid var(--text-accent);
+  padding: 8px 16px;
+  margin: 16px 0;
+  background: rgba(107, 124, 255, 0.05);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}

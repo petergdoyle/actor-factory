@@ -21,14 +21,14 @@ The system composes one persona + zero-or-more specializations + one skill into 
 flowchart TD
     subgraph Input["Project Context"]
         DOMAINS["Selected Domains"]
-        PARAMS["Solution Parameters\n(tech stack, platform, patterns)"]
-        TASK["Current Task\n(generate stories, diagrams, etc.)"]
+        PARAMS["Solution Parameters"]
+        TASK["Current Task"]
     end
 
     subgraph Resolution["Composition Engine"]
-        P_SELECT["Select Persona\n(from primary domain)"]
-        S_DETECT["Detect Specializations\n(keyword matching on params)"]
-        SK_SELECT["Select Skill\n(from task type)"]
+        P_SELECT["Select Persona"]
+        S_DETECT["Detect Specializations"]
+        SK_SELECT["Select Skill"]
     end
 
     subgraph Output["Composed Preamble"]
@@ -99,9 +99,9 @@ Each specialization provides:
 ```mermaid
 flowchart LR
     TEXT["Solution Parameters Text"]
-    SCAN["Keyword Scanner\n(per specialization)"]
-    MATCH["Match Count → Confidence"]
-    FILTER["Threshold Filter\n(≥30% confidence)"]
+    SCAN["Keyword Scanner"]
+    MATCH["Match Count to Confidence"]
+    FILTER["Threshold Filter"]
     INJECT["Inject into Preamble"]
 
     TEXT --> SCAN
@@ -153,11 +153,11 @@ The following diagram shows which personas recommend which skills and specializa
 graph TD
     subgraph Personas["Personas (WHO)"]
         SWE["Software\nArchitect"]
-        INFRA["SRE / Cloud\nArchitect"]
+        INFRA["SRE - Cloud\nArchitect"]
         EA["Enterprise\nArchitect"]
         SEC["Security\nArchitect"]
         DATA["Data\nEngineer"]
-        ML["ML/MLOps\nEngineer"]
+        ML["ML-MLOps\nEngineer"]
         PO["Product\nOwner"]
     end
 
@@ -177,12 +177,12 @@ graph TD
         GCP["GCP"]
         SLS["Serverless"]
         K8S["Kubernetes"]
-        AGILE["Agile/Scrum"]
+        AGILE["Agile-Scrum"]
         PROC["Process\nAutomation"]
         BVB["Buy vs\nBuild"]
     end
 
-    %% Persona → Skill associations
+    %% Persona to Skill associations
     SWE --> MERMAID
     SWE --> STORY
     SWE --> API
@@ -199,7 +199,7 @@ graph TD
     PO --> GAP
     PO --> BPF
 
-    %% Persona → Specialization affinities
+    %% Persona to Specialization affinities
     SWE -.-> AWS
     SWE -.-> AZURE
     SWE -.-> GCP

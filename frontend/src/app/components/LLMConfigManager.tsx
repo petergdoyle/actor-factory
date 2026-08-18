@@ -137,9 +137,11 @@ export default function LLMConfigManager({ onConfigChanged }: { onConfigChanged?
   };
 
   const selectedProviderConfig = configs.find(c => c.id === activeConfigId);
-  const availableModelsForActive = selectedProviderConfig?.available_models.length 
-    ? selectedProviderConfig.available_models 
-    : [selectedProviderConfig?.active_model || "llama3", "llama3", "llama3.2", "gemma3:12b", "mistral", "mermaid-fixer", "gpt-4o", "claude-3-5-sonnet"];
+  const availableModelsForActive = [...new Set(
+    selectedProviderConfig?.available_models.length 
+      ? selectedProviderConfig.available_models 
+      : [selectedProviderConfig?.active_model || "llama3", "llama3.2", "gemma3:12b", "mistral", "mermaid-fixer", "gpt-4o", "claude-3-5-sonnet"]
+  )];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1200px', margin: '0 auto' }}>

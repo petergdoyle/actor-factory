@@ -76,14 +76,14 @@ flowchart TD
     end
 
     subgraph T3["Tier 3: LLM Provider Layer"]
-        LOCAL["Local Models (Ollama)"]
-        CLOUD["Cloud Models (OpenAI / Claude / Bedrock)"]
-        SPEC["Specialized Models (mermaid-fixer, etc.)"]
+        LOCAL["Local Models via Ollama"]
+        CLOUD["Cloud Models via OpenAI, Claude, Bedrock"]
+        SPEC["Specialized Models"]
     end
 
-    subgraph T4["Tier 4: Quality & Evaluation"]
+    subgraph T4["Tier 4: Quality and Evaluation"]
         JUDGE["LLM-as-Judge"]
-        MVAL["Machine Validators (parsers, schemas)"]
+        MVAL["Machine Validators"]
         HEUR["Heuristic Checks"]
     end
 
@@ -188,18 +188,18 @@ sequenceDiagram
     participant LLM as LLM Provider
     participant Judge as Quality Layer
 
-    User->>API: Action (e.g., "Generate diagrams for these requirements")
+    User->>API: Action request
     API->>Templates: Load persona, skill, specializations
     API->>Composer: Compose preamble from loaded templates
     Composer-->>API: Structured preamble + audit metadata
     API->>API: Combine preamble + task-specific instructions
     API->>LLM: Send composed prompt
     LLM-->>API: Raw response
-    API->>Judge: Validate response (parse, schema, heuristic)
+    API->>Judge: Validate response
     Judge-->>API: Validation result
     alt Valid
         API-->>User: Deliver result
-    else Invalid (machine-checkable)
+    else Invalid and machine-checkable
         API->>LLM: Retry with error context
         LLM-->>API: Fixed response
         API-->>User: Deliver fixed result
@@ -264,12 +264,12 @@ A stronger model evaluates the outputs of the operational model. The judge uses 
 
 ```mermaid
 flowchart LR
-    A["Operational LLM Output"] --> B["Skill Rubric (quality_patterns + anti_patterns)"]
+    A["Operational LLM Output"] --> B["Skill Rubric"]
     B --> C["Judge Model"]
     C --> D["Score + Issues + Suggestions"]
-    D --> E{Score acceptable?}
-    E -->|Yes| F["Deliver to User"]
-    E -->|No| G["Flag for Review / Retry"]
+    D --> E{"Score acceptable?"}
+    E -->|"Yes"| F["Deliver to User"]
+    E -->|"No"| G["Flag for Review or Retry"]
 ```
 
 ### Key Architectural Decision
@@ -318,13 +318,13 @@ StoryForge AI is the first application built on this architecture. Here's how it
 
 ```mermaid
 flowchart TD
-    PD["Project Definition (domains, profile, delivery style)"] --> REQ["Requirements (text, files, meeting notes)"]
-    REQ --> SP["Solution Parameters (tech stack, platform, patterns)"]
-    SP --> PLAN["Diagram Plan (AI analyzes requirements → recommended diagrams)"]
-    PLAN --> DIAG["Diagram Generation (per-entry, per-domain persona)"]
-    REQ --> EPICS["Epic Generation (decompose requirements into epics)"]
-    EPICS --> STORIES["Story Generation (per-epic, INVEST-compliant)"]
-    STORIES --> EXPORT["Export (Jira CSV, Markdown report)"]
+    PD["Project Definition"] --> REQ["Requirements"]
+    REQ --> SP["Solution Parameters"]
+    SP --> PLAN["Diagram Plan"]
+    PLAN --> DIAG["Diagram Generation"]
+    REQ --> EPICS["Epic Generation"]
+    EPICS --> STORIES["Story Generation"]
+    STORIES --> EXPORT["Export"]
     DIAG --> EXPORT
 ```
 

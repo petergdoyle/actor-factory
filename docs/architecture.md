@@ -11,41 +11,42 @@ ActorFactory is a universal, domain-agnostic infrastructure layer designed to bu
 ```mermaid
 flowchart TD
     subgraph UI["Next.js Management Workspace"]
-        DOM_UI["🌐 Domains Manager"]
-        ACT_UI["🎭 Actors Manager"]
-        SKL_UI["⚡ Skills Manager"]
-        SPC_UI["🔧 Specializations Manager"]
-        CMP_UI["🔗 Composer & Catalog"]
-        TST_UI["🧪 Test Bench Canvas"]
-        LLM_UI["⚙️ LLM Configurations"]
-        STK_UI["🟢 Stack Health Monitor"]
+        DOM_UI["Domains Manager"]
+        ACT_UI["Actors Manager"]
+        SKL_UI["Skills Manager"]
+        SPC_UI["Specializations Manager"]
+        CMP_UI["Composer and Catalog"]
+        TST_UI["Test Bench Canvas"]
+        LLM_UI["LLM Configurations"]
+        STK_UI["Stack Health Monitor"]
     end
 
     subgraph API["FastAPI Orchestration Gateway"]
-        ROUTES["RESTful API Routes\n(/api/v1/*)"]
-        COMPOSER["Prompt Composer & Converter"]
+        ROUTES["RESTful API Routes"]
+        COMPOSER["Prompt Composer and Converter"]
         ASSEMBLER["Contextual Assembler"]
         ROUTER["Pluggable Model Router"]
     end
 
     subgraph STORAGE["Storage Layer"]
-        DB[("SQLite Database\n(actor_factory.db)")]
+        DB[("SQLite Database")]
         SEED["Seed Engine"]
     end
 
     subgraph LLM["Pluggable LLM Gateway"]
         MOCK["Mock Provider"]
-        OLLAMA["Local Ollama Daemon\n(llama3, gemma3:12b, mermaid-fixer)"]
-        CLOUD["Cloud Providers\n(OpenAI, Claude, Bedrock)"]
+        OLLAMA["Local Ollama Daemon"]
+        CLOUD["Cloud Providers"]
     end
 
-    UI -->|HTTP / SSE Streaming| API
-    API <-->|CRUD & Persistence| DB
-    SEED -->|Populate Standard Matrix & LLM Configs| DB
+    UI -->|"HTTP / SSE Streaming"| API
+    API -->|"CRUD and Persistence"| DB
+    DB -->|"Query Results"| API
+    SEED -->|"Populate Standard Matrix"| DB
     API --> COMPOSER
     COMPOSER --> ROUTER
-    ROUTER -->|Stream / Execute / Ping Health| LLM
-    LLM -->|SSE Token Stream| UI
+    ROUTER -->|"Stream / Execute / Ping Health"| LLM
+    LLM -->|"SSE Token Stream"| UI
 ```
 
 ---
@@ -59,22 +60,22 @@ $$\text{Persona (WHO)} \times \text{Specialization (WITH WHAT EXPERTISE)} \times
 ```mermaid
 flowchart LR
     subgraph Matrix["3D Composition Matrix"]
-        P["🎭 Base Persona\n(Software Architect, SRE, PO, SecArch)"]
-        S["🔧 Specializations\n(AWS, Kubernetes, Agile, Serverless)"]
-        K["⚡ Skill\n(Mermaid Diagrams, INVEST Stories, OpenAPI)"]
+        P["Base Persona"]
+        S["Specializations"]
+        K["Skill"]
     end
 
     subgraph Preamble["Compiled System Prompt"]
-        I["1. IDENTITY & CORE CONCERNS\n(Concerns, Vocabulary, Thinking Patterns)"]
-        E["2. EXPERTISE & CONSTRAINTS\n(Services, Rules, Usage Examples)"]
-        F["3. TASK FORMAT & QUALITY CRITERIA\n(Validation Rules, Quality/Anti-Patterns)"]
+        I["1. IDENTITY and CORE CONCERNS"]
+        E["2. EXPERTISE and CONSTRAINTS"]
+        F["3. TASK FORMAT and QUALITY CRITERIA"]
     end
 
     P --> I
     S --> E
     K --> F
 
-    I --> PREAMBLE["Constrained System Prompt\nfor SLMs / LLMs"]
+    I --> PREAMBLE["Constrained System Prompt"]
     E --> PREAMBLE
     F --> PREAMBLE
 ```

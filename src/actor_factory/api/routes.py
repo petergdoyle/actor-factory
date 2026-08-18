@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 import httpx
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
@@ -369,3 +370,71 @@ def orchestrate(payload: OrchestratePayload):
         return StreamingResponse(stream_gen, media_type="text/event-stream")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ──────────────────────────────────────────────
+# DOCUMENTATION ENDPOINTS
+# ──────────────────────────────────────────────
+
+def _extract_title(content: str, fallback: str) -> str:
+    """Extract title from first # heading or use filename."""
+    for line in content.split('\n')[:5]:
+        if line.startswith('# '):
+            return line[2:].strip()
+    return fallback.replace('-', ' ').replace('_', ' ').title()
+
+
+def _collect_docs(base_dir: Path, current_dir: Path, docs: list):
+    """Recursively collect .md files from a directory."""
+    for item in sorted(current_dir.iterdir()):
+        if item.is_dir() and not item.name.startswith('.'):
+            _collect_docs(base_dir, item, docs)
+        elif item.suffix == '.md':
+            rel_path = str(item.relative_to(base_dir.parent))
+            content = item.read_text(encoding="utf-8")
+            title = _extract_title(content, item.stem)
+            docs.append({"path": rel_path, "title": title, "filename": item.name})
+
+
+@router.get("/docs")
+def list_docs():
+    """List all documentation files grouped by category."""
+    docs_dir = Path(__file__).parent.parent.parent.parent / "docs"
+    if not docs_dir.exists():
+        return {"categories": []}
+
+    categories = []
+
+    # Include top-level .md files as "General" category
+    top_level_docs = []
+    for item in sorted(docs_dir.iterdir()):
+        if item.is_file() and item.suffix == '.md':
+            content = item.read_text(encoding="utf-8")
+            title = _extract_title(content, item.stem)
+            top_level_docs.append({"path": item.name, "title": title, "filename": item.name})
+    if top_level_docs:
+        categories.append({"id": "general", "label": "Architecture", "docs": top_level_docs})
+
+    # Include subdirectory categories
+    for category_dir in sorted(docs_dir.iterdir()):
+        if not category_dir.is_dir() or category_dir.name.startswith('.'):
+            continue
+        docs = []
+        _collect_docs(category_dir, category_dir, docs)
+        if docs:
+            label = category_dir.name.replace('-', ' ').replace('_', ' ').title()
+            categories.append({"id": category_dir.name, "label": label, "docs": docs})
+
+    return {"categories": categories}
+
+
+@router.get("/docs/{path:path}")
+def get_doc(path: str):
+    """Get markdown content of a specific doc file."""
+    docs_dir = Path(__file__).parent.parent.parent.parent / "docs"
+    doc_path = docs_dir / path
+    if not doc_path.exists() or not doc_path.suffix == '.md':
+        raise HTTPException(status_code=404, detail=f"Doc '{path}' not found")
+    content = doc_path.read_text(encoding="utf-8")
+    title = _extract_title(content, doc_path.stem)
+    return {"path": path, "content": content, "title": title}
