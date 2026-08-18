@@ -86,7 +86,7 @@ export default function ActorManager() {
     setName("");
     setTitle("");
     setDescription("");
-    setDomainId("");
+    setDomainId(domains.length > 0 ? domains[0].id : "");
     setVocabulary("");
     setCoreConcerns([]);
     setThinkingPatterns([]);
@@ -94,6 +94,8 @@ export default function ActorManager() {
   };
 
   const handleSave = async () => {
+    if (!name.trim()) return alert("Actor name is required.");
+
     const payload: Actor = {
       id: selectedId || undefined,
       name,
@@ -151,6 +153,12 @@ export default function ActorManager() {
     (a.description && a.description.toLowerCase().includes(search.toLowerCase()))
   );
 
+  const getDomainName = (dId?: string) => {
+    if (!dId) return "Unassigned Domain";
+    const d = domains.find(dom => dom.id === dId);
+    return d ? d.name : "Unassigned Domain";
+  };
+
   return (
     <div className="split-view">
       {/* Left List */}
@@ -162,21 +170,18 @@ export default function ActorManager() {
           </button>
         </div>
 
-        <div className="search-box">
-          <span className="search-icon">🔍</span>
-          <input 
-            type="text" 
-            placeholder="Filter actors..." 
-            value={search} 
-            onChange={e => setSearch(e.target.value)} 
-          />
-        </div>
+        <input 
+          type="text" 
+          placeholder="Filter actors..." 
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
 
         <div className="entity-card-list">
           {filtered.length === 0 ? (
             <div className="empty-state">
               <span className="empty-state-icon">🎭</span>
-              <p>No actors found.</p>
+              <p>No actors found. Create one to get started.</p>
             </div>
           ) : (
             filtered.map(a => (
@@ -187,7 +192,7 @@ export default function ActorManager() {
               >
                 <div className="entity-card-header">
                   <span className="entity-card-title">{a.name}</span>
-                  <span className="badge active">Persona</span>
+                  <span className="badge active">🌐 {getDomainName(a.domain_id)}</span>
                 </div>
                 <p style={{ fontSize: '12px', color: 'var(--text-accent)', fontWeight: 500 }}>{a.title}</p>
                 <p className="entity-card-desc">{a.description || "No description."}</p>
@@ -218,116 +223,131 @@ export default function ActorManager() {
             <label>Actor Name</label>
             <input 
               type="text" 
-              placeholder="e.g. Software Architect, SRE" 
               value={name} 
               onChange={e => setName(e.target.value)} 
+              placeholder="e.g. Software Architect, Teaching Assistant" 
             />
           </div>
-          <div className="form-group">
-            <label>Full Professional Title</label>
-            <input 
-              type="text" 
-              placeholder="e.g. Site Reliability Engineer / Cloud Architect" 
-              value={title} 
-              onChange={e => setTitle(e.target.value)} 
-            />
-          </div>
-        </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
           <div className="form-group">
-            <label>Domain Association</label>
+            <label>Associated Problem Domain</label>
             <select value={domainId} onChange={e => setDomainId(e.target.value)}>
-              <option value="">-- Select Domain (Optional) --</option>
+              <option value="">-- Select Associated Domain --</option>
               {domains.map(d => (
                 <option key={d.id} value={d.id}>{d.name}</option>
               ))}
             </select>
           </div>
-          <div className="form-group">
-            <label>Vocabulary (Comma Separated)</label>
-            <input 
-              type="text" 
-              placeholder="microservices, API gateway, SOLID, idempotency" 
-              value={vocabulary} 
-              onChange={e => setVocabulary(e.target.value)} 
-            />
-          </div>
         </div>
 
         <div className="form-group">
-          <label>Identity & Core Mission Description</label>
-          <textarea 
-            placeholder="Describes who this expert is and their primary objective..." 
-            value={description} 
-            onChange={e => setDescription(e.target.value)} 
+          <label>Professional Title</label>
+          <input 
+            type="text" 
+            value={title} 
+            onChange={e => setTitle(e.target.value)} 
+            placeholder="e.g. Senior Software Architect / Lead Engineer" 
           />
         </div>
 
-        {/* List Editors */}
         <div className="form-group">
-          <label>Core Concerns</label>
-          <div className="list-input-row">
+          <label>Description (Who this persona is)</label>
+          <textarea 
+            value={description} 
+            onChange={e => setDescription(e.target.value)} 
+            placeholder="Describe the cognitive profile and core role of this actor..." 
+            style={{ minHeight: '60px' }}
+          />
+        </div>
+
+        {/* Core Concerns List */}
+        <div className="form-group">
+          <label>Core Concerns (Key architectural / domain priorities)</label>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
             <input 
               type="text" 
-              placeholder="Add core concern (e.g. System decomposition & modularity)" 
-              value={newConcern} 
+              placeholder="Add core concern (e.g. Rubric alignment, API contracts)..." 
+              value={newConcern}
               onChange={e => setNewConcern(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addItem(coreConcerns, setCoreConcerns, newConcern, setNewConcern))}
+              onKeyDown={e => e.key === 'Enter' && addItem(coreConcerns, setCoreConcerns, newConcern, setNewConcern)}
             />
-            <button className="btn-secondary" onClick={() => addItem(coreConcerns, setCoreConcerns, newConcern, setNewConcern)}>Add</button>
+            <button className="btn-secondary" style={{ padding: '0 16px' }} onClick={() => addItem(coreConcerns, setCoreConcerns, newConcern, setNewConcern)}>
+              Add
+            </button>
           </div>
-          {coreConcerns.map((c, i) => (
-            <div key={i} className="list-item-badge">
-              <span>• {c}</span>
-              <span className="delete-icon" onClick={() => removeItem(coreConcerns, setCoreConcerns, i)}>✕</span>
-            </div>
-          ))}
+          <div className="tag-container">
+            {coreConcerns.map((item, idx) => (
+              <span key={idx} className="tag-chip accent">
+                {item}
+                <button className="tag-chip-remove" onClick={() => removeItem(coreConcerns, setCoreConcerns, idx)}>×</button>
+              </span>
+            ))}
+          </div>
         </div>
 
+        {/* Domain Vocabulary */}
         <div className="form-group">
-          <label>How You Approach Problems (Thinking Patterns)</label>
-          <div className="list-input-row">
+          <label>Domain Vocabulary (Comma-separated keywords/jargon)</label>
+          <input 
+            type="text" 
+            value={vocabulary} 
+            onChange={e => setVocabulary(e.target.value)} 
+            placeholder="e.g. rubric, formative, summative, criterion, mastery level" 
+          />
+        </div>
+
+        {/* Thinking Patterns */}
+        <div className="form-group">
+          <label>Thinking Patterns (Cognitive steps & reasoning rules)</label>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
             <input 
               type="text" 
-              placeholder="Add thinking pattern (e.g. Design for failure — assume any component can fail)" 
-              value={newPattern} 
+              placeholder="Add reasoning rule (e.g. Evaluate student evidence strictly against rubric scale)..." 
+              value={newPattern}
               onChange={e => setNewPattern(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addItem(thinkingPatterns, setThinkingPatterns, newPattern, setNewPattern))}
+              onKeyDown={e => e.key === 'Enter' && addItem(thinkingPatterns, setThinkingPatterns, newPattern, setNewPattern)}
             />
-            <button className="btn-secondary" onClick={() => addItem(thinkingPatterns, setThinkingPatterns, newPattern, setNewPattern)}>Add</button>
+            <button className="btn-secondary" style={{ padding: '0 16px' }} onClick={() => addItem(thinkingPatterns, setThinkingPatterns, newPattern, setNewPattern)}>
+              Add
+            </button>
           </div>
-          {thinkingPatterns.map((p, i) => (
-            <div key={i} className="list-item-badge">
-              <span>🧠 {p}</span>
-              <span className="delete-icon" onClick={() => removeItem(thinkingPatterns, setThinkingPatterns, i)}>✕</span>
-            </div>
-          ))}
+          <div className="tag-container">
+            {thinkingPatterns.map((item, idx) => (
+              <span key={idx} className="tag-chip accent">
+                {item}
+                <button className="tag-chip-remove" onClick={() => removeItem(thinkingPatterns, setThinkingPatterns, idx)}>×</button>
+              </span>
+            ))}
+          </div>
         </div>
 
+        {/* Quality Criteria */}
         <div className="form-group">
-          <label>Quality Criteria</label>
-          <div className="list-input-row">
+          <label>Quality Criteria (Output evaluation standards)</label>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
             <input 
               type="text" 
-              placeholder="Add quality criterion (e.g. Minimal coupling between components)" 
-              value={newCriterion} 
+              placeholder="Add quality criteria (e.g. Transparent rubric score itemization)..." 
+              value={newCriterion}
               onChange={e => setNewCriterion(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addItem(qualityCriteria, setQualityCriteria, newCriterion, setNewCriterion))}
+              onKeyDown={e => e.key === 'Enter' && addItem(qualityCriteria, setQualityCriteria, newCriterion, setNewCriterion)}
             />
-            <button className="btn-secondary" onClick={() => addItem(qualityCriteria, setQualityCriteria, newCriterion, setNewCriterion)}>Add</button>
+            <button className="btn-secondary" style={{ padding: '0 16px' }} onClick={() => addItem(qualityCriteria, setQualityCriteria, newCriterion, setNewCriterion)}>
+              Add
+            </button>
           </div>
-          {qualityCriteria.map((q, i) => (
-            <div key={i} className="list-item-badge">
-              <span>✓ {q}</span>
-              <span className="delete-icon" onClick={() => removeItem(qualityCriteria, setQualityCriteria, i)}>✕</span>
-            </div>
-          ))}
+          <div className="tag-container">
+            {qualityCriteria.map((item, idx) => (
+              <span key={idx} className="tag-chip accent">
+                {item}
+                <button className="tag-chip-remove" onClick={() => removeItem(qualityCriteria, setQualityCriteria, idx)}>×</button>
+              </span>
+            ))}
+          </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
-          <button className="btn-secondary" onClick={handleNew}>Cancel</button>
-          <button className="btn-primary" onClick={handleSave} disabled={!name.trim()}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+          <button className="btn-primary" onClick={handleSave}>
             Save Actor Persona
           </button>
         </div>

@@ -7,8 +7,9 @@ import SpecializationManager from './components/SpecializationManager';
 import Composer, { Composition } from './components/Composer';
 import TestBench from './components/TestBench';
 import LLMConfigManager from './components/LLMConfigManager';
+import AuditLogManager from './components/AuditLogManager';
 
-type Tab = 'domains' | 'actors' | 'skills' | 'specializations' | 'composer' | 'testbench' | 'llm_configs';
+type Tab = 'domains' | 'actors' | 'skills' | 'specializations' | 'composer' | 'testbench' | 'llm_configs' | 'audit_logs';
 
 interface StackHealth {
   api_status: 'online' | 'offline';
@@ -130,6 +131,12 @@ export default function Home() {
           >
             ⚙️ LLM Configurations
           </button>
+          <button 
+            className={`tab-btn ${activeTab === 'audit_logs' ? 'active' : ''}`}
+            onClick={() => setActiveTab('audit_logs')}
+          >
+            📋 Audit Log
+          </button>
         </nav>
 
         {/* Stack Status & Action Controls */}
@@ -169,6 +176,7 @@ export default function Home() {
         {activeTab === 'composer' && <Composer onSelectForTesting={handleSelectForTesting} />}
         {activeTab === 'testbench' && <TestBench activeComposition={activeComposition} initialPrompt={initialPrompt} />}
         {activeTab === 'llm_configs' && <LLMConfigManager onConfigChanged={checkHealth} />}
+        {activeTab === 'audit_logs' && <AuditLogManager />}
       </main>
     </div>
   );

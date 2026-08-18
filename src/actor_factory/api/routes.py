@@ -1,6 +1,6 @@
 import time
 import httpx
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
@@ -25,6 +25,14 @@ from src.actor_factory.providers.registry import ProviderRegistry
 from src.actor_factory.providers.base import LLMProviderRequest
 from src.actor_factory.storage.sqlite import SQLiteStorage
 from src.actor_factory.storage.seed import seed_default_data
+from src.actor_factory.llm.audit_logger import (
+    log_llm_call,
+    query_audit_logs,
+    list_log_dates,
+    get_audit_config,
+    save_audit_config,
+    DEFAULT_CALL_TYPES,
+)
 
 router = APIRouter(prefix="/api/v1")
 
@@ -81,6 +89,48 @@ def check_stack_health(storage: SQLiteStorage = Depends(get_storage)):
 
 
 # ──────────────────────────────────────────────
+# LLM AUDIT LOG ENDPOINTS
+# ──────────────────────────────────────────────
+@router.get("/llm/audit-logs")
+def list_audit_log_dates():
+    """Returns available log dates and compressed archive file status."""
+    return list_log_dates()
+
+@router.get("/llm/audit-logs/search")
+def search_audit_logs(
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    call_type: Optional[str] = Query(None),
+    search_query: Optional[str] = Query(None),
+    limit: int = Query(50)
+):
+    """
+    Search audit log entries across date range (start_date -> end_date).
+    Decompresses gzip archives on-demand for historical range queries.
+    """
+    return query_audit_logs(
+        start_date=start_date,
+        end_date=end_date,
+        call_type=call_type,
+        search_query=search_query,
+        limit=limit
+    )
+
+@router.get("/llm/audit-logs/config")
+def get_audit_logging_config():
+    """Gets logging controls and disabled call-types."""
+    config = get_audit_config()
+    config["known_call_types"] = DEFAULT_CALL_TYPES
+    return config
+
+@router.put("/llm/audit-logs/config")
+def update_audit_logging_config(config: Dict[str, Any]):
+    """Updates audit logging controls configuration."""
+    save_audit_config(config)
+    return get_audit_config()
+
+
+# ──────────────────────────────────────────────
 # LLM PROVIDER CONFIG ENDPOINTS
 # ──────────────────────────────────────────────
 @router.get("/llm/configs", response_model=List[LLMProviderConfig])
@@ -126,7 +176,6 @@ def test_llm_connection(payload: TestLLMPayload, storage: SQLiteStorage = Depend
                     latency = int((time.time() - t0) * 1000)
                     data = resp.json()
                     models = [m.get("name", "") for m in data.get("models", [])]
-                    # Update config status in storage
                     if cfg:
                         cfg.status = "online"
                         cfg.available_models = models
@@ -155,7 +204,6 @@ def test_llm_connection(payload: TestLLMPayload, storage: SQLiteStorage = Depend
                 "models": []
             }
     else:
-        # Cloud providers
         has_key = bool(payload.api_key or (cfg and cfg.api_key))
         return {
             "status": "online" if has_key else "unconfigured",
@@ -287,11 +335,9 @@ def preview_composition(payload: ComposePreviewPayload, storage: SQLiteStorage =
     specs = [storage.get_specialization(sp_id) for sp_id in payload.specialization_ids]
     specs = [s for s in specs if s is not None]
 
-    # Build compiled system prompt
     base_persona_cap = actor_to_capability(actor)
     spec_caps = [specialization_to_capability(s) for s in specs]
     
-    # Pick primary skill or merge skills
     if skills:
         skill_cap = skill_to_capability(skills[0])
     else:
@@ -323,7 +369,7 @@ def seed_data(storage: SQLiteStorage = Depends(get_storage)):
 
 
 # ──────────────────────────────────────────────
-# LEGACY / ORCHESTRATION ENDPOINTS
+# LEGACY / ORCHESTRATION ENDPOINTS WITH AUDIT LOGGING
 # ──────────────────────────────────────────────
 @router.get("/capabilities", response_model=List[CapabilityIngredient])
 def list_capabilities(storage: SQLiteStorage = Depends(get_storage)):
@@ -336,6 +382,7 @@ def list_profiles(storage: SQLiteStorage = Depends(get_storage)):
 class OrchestratePayload(BaseModel):
     model_id: str = "mock"
     temperature: float = 0.2
+    call_type: str = "testbench_execution"
     request: TeamOrchestrationRequest
 
 @router.post("/orchestrate")
@@ -361,11 +408,49 @@ def orchestrate(payload: OrchestratePayload):
         model_id=payload.model_id,
         temperature=payload.temperature
     )
+
+    provider_name = payload.model_id.split(":", 1)[0] if ":" in payload.model_id else payload.model_id
+    model_name = payload.model_id.split(":", 1)[-1] if ":" in payload.model_id else payload.model_id
+
+    modifiers = {
+        "persona": actor.actor_name,
+        "persona_title": actor.base_persona.name if hasattr(actor, 'base_persona') else actor.actor_name,
+        "specializations": [sp.name for sp in actor.specializations] if hasattr(actor, 'specializations') else [],
+        "skill": actor.skill.name if hasattr(actor, 'skill') else "Default Skill",
+        "preamble_char_count": len(system_prompt)
+    }
+    domain_ctx = payload.request.domain_context.model_dump()
     
-    # 4. Stream output
+    # 4. Stream output with audit log wrapper
     try:
         provider = ProviderRegistry.get_provider(payload.model_id)
         stream_gen = provider.execute_stream(provider_req)
-        return StreamingResponse(stream_gen, media_type="text/event-stream")
+
+        def audit_logging_wrapper():
+            full_response = []
+            start_time = time.time()
+            try:
+                for chunk in stream_gen:
+                    full_response.append(chunk)
+                    yield chunk
+            finally:
+                duration_ms = int((time.time() - start_time) * 1000)
+                response_text = "".join(full_response)
+                call_id = f"{actor.actor_name.lower().replace(' ', '_')}/{payload.call_type}"
+                
+                log_llm_call(
+                    call_type=payload.call_type,
+                    call_id=call_id,
+                    domain_context=domain_ctx,
+                    prompt_modifiers=modifiers,
+                    provider=provider_name,
+                    model=model_name,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    response_text=response_text,
+                    duration_ms=duration_ms
+                )
+
+        return StreamingResponse(audit_logging_wrapper(), media_type="text/event-stream")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

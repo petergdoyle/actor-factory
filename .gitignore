@@ -1,7 +1,8 @@
-# Dev logs, pids, databases
+# Dev logs, pids, databases, audit outputs
 *.log
 *.pid
 *.db
+output/
 
 # Python
 __pycache__/

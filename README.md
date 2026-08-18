@@ -18,8 +18,8 @@ ActorFactory is not a single application; it is the universal intelligence engin
          ┌───────────────────────┼───────────────────────┐
          ▼                       ▼                       ▼
 ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
-│  StoryForge AI   │   │   GradeMark AI   │   │   LogisticsOS    │ (Downstream Apps)
-│ (Project Mgmt)   │   │  (Academic QA)   │   │ (Online Order)   │
+│  EduGrade AI     │   │   StoryForge AI  │   │   LogisticsOS    │ (Downstream Apps)
+│ (K-12 Education) │   │ (Project Mgmt)   │   │ (Online Order)   │
 └──────────────────┘   └──────────────────┘   └──────────────────┘
 ```
 
@@ -29,14 +29,16 @@ ActorFactory is not a single application; it is the universal intelligence engin
 
 ActorFactory includes a modern, glassmorphic Next.js workspace for managing, configuring, and testing actor compositions:
 
-- 🟢 **Live Stack Health Status**: Persistent header badges (`🟢 API Connected`, `🟢 LLM: llama3`) polling system health and latency.
+- 🟢 **Live Stack Health Status**: Persistent header badges (`🟢 API Connected`, `🟢 LLM: gemma4:12b`) polling system health and latency.
+- 🌱 **Seed Engine & Factory Reset**: One-click catalog reset (`🌱 Seed Library`) and idempotent auto-seeding.
+- 📋 **Prompt Engineering Audit**: Daily rotating JSONL log files (`output/llm_audit_logs/`) with daily gzip archiving (`.jsonl.gz`), on-demand date range searching, git commit SHA tracking, and per-type logging controls.
 - ⚙️ **LLM Configurations**: Manage LLM providers (Ollama Local, Ollama Remote, OpenAI, Anthropic, AWS Bedrock, Mock), base URLs, API keys, test connection latency, and discover available models.
-- 🌐 **Domains**: Define problem domain operational contexts and default JSON parameter schemas.
-- 🎭 **Actors (Personas)**: Define expert identities, core concerns, domain vocabulary, thinking patterns, and quality criteria.
-- ⚡ **Skills**: Define cross-cutting executable capabilities with output formats, validation levels (`machine`, `structural`, `heuristic`), validation rules, quality patterns, and anti-patterns.
-- 🔧 **Specializations**: Define platform/vendor expertise (e.g. AWS, Kubernetes, Agile), constraints, usage examples, and auto-detection keywords.
+- 🌐 **Domains**: Define problem domain operational contexts (e.g. `K-12 Education`, `Software Engineering`, `InfoSec`) and default JSON parameter schemas.
+- 🎭 **Actors (Personas)**: Define expert identities (e.g. `Teaching Assistant`, `Software Architect`, `Security Architect`), core concerns, domain vocabulary, thinking patterns, and quality criteria.
+- ⚡ **Skills**: Define cross-cutting executable capabilities (e.g. `Rubric-Based Assessment & Grading`, `Mermaid Architecture Diagram`, `User Story Writing`) with output formats, validation levels (`machine`, `structural`, `heuristic`), validation rules, quality patterns, and anti-patterns.
+- 🔧 **Specializations**: Define platform/subject expertise (e.g. `STEM & Quantitative Assessments`, `Humanities & Subjective Writing`, `AWS`), constraints, usage examples, and auto-detection keywords.
 - 🔗 **Composer**: 3-step matrix selector (`Persona × Specialization × Skill`) with real-time prompt compilation preview and profile persistence.
-- 🧪 **Test Bench**: Interactive execution canvas for streaming model outputs from local Ollama SLMs or cloud gateways.
+- 🧪 **Test Bench**: Interactive execution canvas for streaming model outputs with custom LLM Goal tags (e.g. `design_ecommerce_solution`, `evaluate_student_rubric`).
 
 ---
 
@@ -85,7 +87,8 @@ make test
 
 All core architectural designs, specification catalogs, and research documents are maintained under the `docs/` folder:
 
-- 🏛️ **[System Architecture](file:///Users/peterdoyle/Dev/actor-factory/docs/architecture.md)** — Core topology, 3D composition matrix, data models, validation spectrum, LLM configurations, and API routes.
+- 🏛️ **[System Architecture](file:///Users/peterdoyle/Dev/actor-factory/docs/architecture.md)** — Core topology, 3D composition matrix, data models, validation spectrum, LLM configurations, prompt audit log engine, and API routes.
+- 🌱 **[Seed Engine & Factory Reset Pattern](file:///Users/peterdoyle/Dev/actor-factory/docs/seed-engine.md)** — Architectural design and implementation guide for idempotent seeding and database resets.
 - 📐 **[AI Engineering Documentation](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/)**:
   - 🗺️ **[AI Strategy & Blueprint](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/ai-strategy.md)** — Multi-tiered AI application architecture blueprint.
   - 🧩 **[Persona × Skill Composition](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/persona-skill-composition.md)** — Building validatable AI expertise & feedback chains.

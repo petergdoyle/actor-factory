@@ -18,30 +18,35 @@ flowchart TD
         CMP_UI["🔗 Composer & Catalog"]
         TST_UI["🧪 Test Bench Canvas"]
         LLM_UI["⚙️ LLM Configurations"]
+        AUD_UI["📋 Audit Log System"]
         STK_UI["🟢 Stack Health Monitor"]
     end
 
     subgraph API["FastAPI Orchestration Gateway"]
-        ROUTES["RESTful API Routes\n(/api/v1/*)"]
+        ROUTES["RESTful API Routes<br/>(/api/v1/*)"]
         COMPOSER["Prompt Composer & Converter"]
         ASSEMBLER["Contextual Assembler"]
         ROUTER["Pluggable Model Router"]
+        AUDIT_ENG["Audit Logger & Archiver<br/>(Daily Gzip Rollover)"]
     end
 
-    subgraph STORAGE["Storage Layer"]
-        DB[("SQLite Database\n(actor_factory.db)")]
-        SEED["Seed Engine"]
+    subgraph STORAGE["Storage & Log Layer"]
+        DB[("SQLite Database<br/>(actor_factory.db)")]
+        AUDIT_LOGS[("Daily JSONL & Archive<br/>(output/llm_audit_logs/)")]
+        SEED["Seed Engine (seed.py)"]
     end
 
     subgraph LLM["Pluggable LLM Gateway"]
         MOCK["Mock Provider"]
-        OLLAMA["Local Ollama Daemon\n(llama3, gemma3:12b, mermaid-fixer)"]
-        CLOUD["Cloud Providers\n(OpenAI, Claude, Bedrock)"]
+        OLLAMA["Local Ollama Daemon<br/>(gemma4:12b, llama3)"]
+        CLOUD["Cloud Providers<br/>(OpenAI, Claude, Bedrock)"]
     end
 
     UI -->|HTTP / SSE Streaming| API
     API <-->|CRUD & Persistence| DB
-    SEED -->|Populate Standard Matrix & LLM Configs| DB
+    API --> AUDIT_ENG
+    AUDIT_ENG --> AUDIT_LOGS
+    SEED -->|Populate Matrix & LLM Configs| DB
     API --> COMPOSER
     COMPOSER --> ROUTER
     ROUTER -->|Stream / Execute / Ping Health| LLM
@@ -59,22 +64,22 @@ $$\text{Persona (WHO)} \times \text{Specialization (WITH WHAT EXPERTISE)} \times
 ```mermaid
 flowchart LR
     subgraph Matrix["3D Composition Matrix"]
-        P["🎭 Base Persona\n(Software Architect, SRE, PO, SecArch)"]
-        S["🔧 Specializations\n(AWS, Kubernetes, Agile, Serverless)"]
-        K["⚡ Skill\n(Mermaid Diagrams, INVEST Stories, OpenAPI)"]
+        P["🎭 Base Persona<br/>(Software Architect, SRE, PO, SecArch, Teaching Assistant)"]
+        S["🔧 Specializations<br/>(AWS, Kubernetes, STEM Assessments, Humanities Writing)"]
+        K["⚡ Skill<br/>(Mermaid Diagrams, User Stories, Rubric Assessment, Gap Analysis)"]
     end
 
     subgraph Preamble["Compiled System Prompt"]
-        I["1. IDENTITY & CORE CONCERNS\n(Concerns, Vocabulary, Thinking Patterns)"]
-        E["2. EXPERTISE & CONSTRAINTS\n(Services, Rules, Usage Examples)"]
-        F["3. TASK FORMAT & QUALITY CRITERIA\n(Validation Rules, Quality/Anti-Patterns)"]
+        I["1. IDENTITY & CORE CONCERNS<br/>(Concerns, Vocabulary, Thinking Patterns)"]
+        E["2. EXPERTISE & CONSTRAINTS<br/>(Services, Rules, Usage Examples)"]
+        F["3. TASK FORMAT & QUALITY CRITERIA<br/>(Validation Rules, Quality/Anti-Patterns)"]
     end
 
     P --> I
     S --> E
     K --> F
 
-    I --> PREAMBLE["Constrained System Prompt\nfor SLMs / LLMs"]
+    I --> PREAMBLE["Constrained System Prompt<br/>for SLMs / LLMs"]
     E --> PREAMBLE
     F --> PREAMBLE
 ```
@@ -85,31 +90,32 @@ flowchart LR
 
 | Entity | Purpose | Key Attributes |
 |--------|---------|----------------|
-| **`Domain`** | Defines operational problem boundaries and context parameters | `name`, `description`, `parameters` (JSON schema/defaults) |
-| **`Actor` (Persona)** | Defines professional identity and cognitive approach | `name`, `title`, `description`, `domain_id`, `core_concerns`, `vocabulary`, `thinking_patterns`, `quality_criteria` |
-| **`Skill`** | Defines executable capability & output artifact rules | `name`, `description`, `output_format`, `validation_level` (`machine`, `structural`, `heuristic`, `human`), `validation_rules`, `quality_patterns`, `anti_patterns` |
-| **`Specialization`** | Defines platform/vendor expertise & detection rules | `name`, `description`, `services_and_patterns`, `constraints`, `examples`, `detection_keywords` |
+| **`Domain`** | Defines operational problem boundaries and context parameters | `name`, `description`, `parameters` (JSON schema/defaults, e.g. `K-12 Education`, `Software Engineering`) |
+| **`Actor` (Persona)** | Defines professional identity and cognitive approach | `name`, `title`, `description`, `domain_id`, `core_concerns`, `vocabulary`, `thinking_patterns`, `quality_criteria` (e.g. `Teaching Assistant`, `Software Architect`) |
+| **`Skill`** | Defines executable capability & output artifact rules | `name`, `description`, `output_format`, `validation_level` (`machine`, `structural`, `heuristic`), `validation_rules`, `quality_patterns`, `anti_patterns` (e.g. `Rubric-Based Assessment`, `Mermaid Building`) |
+| **`Specialization`** | Defines platform/vendor/subject expertise & detection rules | `name`, `description`, `services_and_patterns`, `constraints`, `examples`, `detection_keywords` (e.g. `STEM & Quantitative Assessments`, `Humanities & Subjective Writing`, `AWS`) |
 | **`Composition`** | Named profile linking an Actor, Skills, and Specializations | `name`, `actor_id`, `skill_ids`, `specialization_ids` |
 | **`LLMProviderConfig`** | Configuration & connection status for an LLM provider | `id`, `name`, `provider_type`, `base_url`, `api_key`, `active_model`, `is_active`, `status`, `available_models` |
 
 ---
 
-## ⚖️ Validation Spectrum & Feedback Chain
+## 📋 Prompt Engineering Audit & Daily Archiving Engine
 
-Outputs produced by ActorFactory actors undergo multi-tier validation:
+The audit logging system records every LLM call with full context for tuning and evaluation:
 
-| Level | Mechanism | Example | Auto-Retry / Repair |
-|-------|-----------|---------|---------------------|
-| **Machine** | Binary parser or schema validator | Mermaid.js syntax parser, OpenAPI validator | ✅ Yes (`mermaid-fixer`) |
-| **Structural** | Template & schema rules | INVEST user story format, Given/When/Then | ⚠️ Partial |
-| **Heuristic** | Rule-based coverage analysis | Domain NFR coverage check | ⚠️ Partial |
-| **Human** | Subjective domain judgment | Solution design trade-offs | ❌ Human review |
+- **JSONL Storage**: Writes daily entries to `output/llm_audit_logs/YYYY-MM-DD.jsonl`.
+- **Auto-Archiving**: Automatically compresses past daily log files into `output/llm_audit_logs/archive/YYYY-MM-DD.jsonl.gz`.
+- **On-Demand Decompression**: API range queries (`start_date` -> `end_date`) decompress archived `.jsonl.gz` files in memory without needing disk extraction.
+- **Git SHA Tagging**: Every entry includes current `git.sha` and `git.branch`.
+- **Call-Type Controls**: Per-type logging controls managed via `/api/v1/llm/audit-logs/config`.
 
 ---
 
 ## 📡 API Architecture
 
 - **`GET /api/v1/health/stack`** — Checks live health status of API gateway and active LLM provider.
+- **`GET /api/v1/llm/audit-logs/search`** — Search audit log entries by date range (`start_date`, `end_date`), `call_type`, search query, and limit.
+- **`GET /api/v1/llm/audit-logs/config`**, `PUT /api/v1/llm/audit-logs/config` — Get/update logging controls configuration.
 - **`GET /api/v1/llm/configs`**, `POST /api/v1/llm/configs`, `DELETE /api/v1/llm/configs/{id}` — Manages provider configs.
 - **`POST /api/v1/llm/test`** — Tests connection, measures latency, and discovers available models.
 - **`POST /api/v1/llm/active`** — Sets the active default provider and model.
@@ -119,18 +125,11 @@ Outputs produced by ActorFactory actors undergo multi-tier validation:
 - **`GET /api/v1/specializations`**, `POST /api/v1/specializations`, `DELETE /api/v1/specializations/{id}`
 - **`GET /api/v1/compositions`**, `POST /api/v1/compositions`, `DELETE /api/v1/compositions/{id}`
 - **`POST /api/v1/compose/preview`** — Compiles and previews system prompt in real-time.
-- **`POST /api/v1/orchestrate`** — Executes streaming LLM inference via SSE.
+- **`POST /api/v1/orchestrate`** — Executes streaming LLM inference via SSE (accepts optional `call_type` tag).
 - **`POST /api/v1/seed`** — Populates standard matrix & provider data.
 
 ---
 
-## 📚 Deep-Dive AI Engineering Reference Docs
+## 📖 Related Documentation
 
-The core principles and research underlying ActorFactory are detailed in the `docs/ai-engineering/` directory:
-
-- [AI Strategy & Blueprint](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/ai-strategy.md) — Multi-tiered AI application architecture blueprint.
-- [Persona × Skill Composition](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/persona-skill-composition.md) — Validatable AI expertise and validation feedback loops.
-- [Persona × Skill × Specialization Matrix Summary](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/persona-skill-specialization-summary.md) — Matrix dimensions and confidence auto-detection.
-- [Prompt Template Definitions](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/prompt-template-definitions.md) — Full specification catalog of Personas, Skills, and Specializations.
-- [Prompt Composition Reference](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/prompt-composition-reference.md) — Reference guide for prompt preambles and system prompt construction.
-- [Specialized Small Models](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/specialized-small-models.md) — SLM optimization, QLoRA fine-tuning, and model routing.
+- 📄 **[Seed Engine & Factory Reset Pattern](file:///Users/peterdoyle/Dev/actor-factory/docs/seed-engine.md)** — Detailed architectural guide on building an idempotent seed engine and factory reset pattern for LLM applications.
