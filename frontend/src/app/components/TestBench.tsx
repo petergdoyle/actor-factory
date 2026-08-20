@@ -63,7 +63,7 @@ const SAMPLE_RUBRICS = [
   }
 ];
 
-const API_BASE = "http://localhost:8000/api/v1";
+const API_BASE = "/api/v1";
 
 export default function TestBench({ activeComposition, initialPrompt }: { activeComposition?: Composition | null, initialPrompt?: string }) {
   const [modelId, setModelId] = useState('ollama:gemma4:12b');

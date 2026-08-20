@@ -13,7 +13,7 @@ export interface LLMProviderConfig {
   available_models: string[];
 }
 
-const API_BASE = "http://localhost:8000/api/v1";
+const API_BASE = "/api/v1";
 
 export default function LLMConfigManager({ onConfigChanged }: { onConfigChanged?: () => void }) {
   const [configs, setConfigs] = useState<LLMProviderConfig[]>([]);
