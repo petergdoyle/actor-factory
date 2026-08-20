@@ -8,7 +8,7 @@ export interface Domain {
   parameters: Record<string, any>;
 }
 
-const API_BASE = "http://localhost:8000/api/v1";
+const API_BASE = "/api/v1";
 
 export default function DomainManager() {
   const [domains, setDomains] = useState<Domain[]>([]);

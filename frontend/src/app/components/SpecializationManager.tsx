@@ -11,7 +11,7 @@ export interface Specialization {
   detection_keywords: string[];
 }
 
-const API_BASE = "http://localhost:8000/api/v1";
+const API_BASE = "/api/v1";
 
 export default function SpecializationManager() {
   const [specs, setSpecs] = useState<Specialization[]>([]);

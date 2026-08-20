@@ -12,7 +12,7 @@ export interface Composition {
   specialization_ids: string[];
 }
 
-const API_BASE = "http://localhost:8000/api/v1";
+const API_BASE = "/api/v1";
 
 export default function Composer({ onSelectForTesting }: { onSelectForTesting?: (comp: Composition, prompt: string) => void }) {
   const [actors, setActors] = useState<Actor[]>([]);

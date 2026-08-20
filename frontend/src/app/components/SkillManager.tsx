@@ -12,7 +12,7 @@ export interface Skill {
   anti_patterns: string[];
 }
 
-const API_BASE = "http://localhost:8000/api/v1";
+const API_BASE = "/api/v1";
 
 export default function SkillManager() {
   const [skills, setSkills] = useState<Skill[]>([]);

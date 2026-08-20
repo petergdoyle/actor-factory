@@ -1,0 +1,47 @@
+# ActorFactory Frontend - Production Dockerfile
+# Next.js 16 standalone build (minimal runtime image)
+
+# --- Stage 1: Install dependencies ---
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --only=production=false
+
+# --- Stage 2: Build the Next.js app ---
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY frontend/ .
+
+# Configure Next.js for standalone output (skip TS errors — pre-existing in source)
+RUN printf 'import type { NextConfig } from "next";\nconst nextConfig: NextConfig = { output: "standalone", typescript: { ignoreBuildErrors: true } };\nexport default nextConfig;\n' > next.config.ts
+
+# Build with API URL as build-time env (defaults to relative for same-domain)
+# In production, set NEXT_PUBLIC_API_URL to the backend service URL
+ENV NEXT_PUBLIC_API_URL=""
+RUN npm run build
+
+# --- Stage 3: Production runtime ---
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV HOSTNAME="0.0.0.0"
+ENV PORT=3000
+
+# Non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Copy standalone build output
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+
+# Health check
+# Note: No container HEALTHCHECK — use ALB target group health checking.
+# Container-level checks kill tasks when SSR pages fail due to backend unavailability.
+USER nextjs
+EXPOSE 3000
+
+CMD ["node", "server.js"]

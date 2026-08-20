@@ -35,7 +35,7 @@ export default function Home() {
 
   const checkHealth = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/v1/health/stack");
+      const res = await fetch("/api/v1/health/stack");
       if (res.ok) {
         const data = await res.json();
         setStackHealth({
@@ -68,7 +68,7 @@ export default function Home() {
   const handleSeedData = async () => {
     if (!confirm("Seed database with default Domains, Personas, Skills, Specializations, and LLM Configs?")) return;
     try {
-      const res = await fetch("http://localhost:8000/api/v1/seed", { method: "POST" });
+      const res = await fetch("/api/v1/seed", { method: "POST" });
       if (res.ok) {
         alert("Seed data successfully populated!");
         window.location.reload();
