@@ -5,7 +5,7 @@
 export const getApiBaseUrl = (): string => {
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname || 'localhost';
-    return `http://${hostname}:8000/api/v1`;
+    return `http://${hostname}:8082/api/v1`;
   }
-  return "http://localhost:8000/api/v1";
+  return "http://localhost:8082/api/v1";
 };

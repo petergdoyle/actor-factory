@@ -50,7 +50,7 @@ ActorFactory includes defensive, idempotent `make` dev lifecycle targets:
 # 1. First-time setup (installs Python packages via uv sync + frontend npm packages)
 make setup
 
-# 2. Start development environment (FastAPI on :8000, Next.js on :3000)
+# 2. Start development environment (FastAPI on :8082, Next.js on :3002)
 make dev-up
 
 # 3. Check health status of all local services
@@ -75,7 +75,7 @@ make test
 | `make dev-up` | Start FastAPI & Next.js background servers (idempotent, checks ports & setup prereqs) |
 | `make dev-down` | Stop background servers cleanly (no-ops if servers aren't running) |
 | `make dev-restart` | Restart development servers cleanly |
-| `make dev-status` | Health check all services (`:8000/health`, `:3000`, Ollama `:11434`) |
+| `make dev-status` | Health check all services (`:8082/health`, `:3002`, Ollama `:11434`) |
 | `make test` | Run tests with `pytest` |
 | `make build-docker` | Build local Docker container image |
 | `make run-docker` | Run Docker container locally |

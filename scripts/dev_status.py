@@ -31,10 +31,10 @@ def main():
     print("="*65)
 
     services = [
-        {"name": "Frontend UI (Local)", "url": "http://localhost:3000"},
-        {"name": "Frontend UI (VLAN)",  "url": f"http://{local_ip}:3000"},
-        {"name": "FastAPI Health",     "url": "http://localhost:8000/health"},
-        {"name": "FastAPI Docs",       "url": "http://localhost:8000/docs"},
+        {"name": "Frontend UI (Local)", "url": "http://localhost:3002"},
+        {"name": "Frontend UI (VLAN)",  "url": f"http://{local_ip}:3002"},
+        {"name": "FastAPI Health",     "url": "http://localhost:8082/health"},
+        {"name": "FastAPI Docs",       "url": "http://localhost:8082/docs"},
         {"name": "Ollama Daemon",      "url": "http://localhost:11434/"},
     ]
 

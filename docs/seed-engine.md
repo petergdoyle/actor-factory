@@ -157,7 +157,7 @@ In the Next.js workspace header, a prominent **`🌱 Seed Library`** button allo
 const handleSeedData = async () => {
   if (!confirm("Seed database with default Domains, Personas, Skills, Specializations, and LLM Configs?")) return;
   try {
-    const res = await fetch("http://localhost:8000/api/v1/seed", { method: "POST" });
+    const res = await fetch("http://localhost:8082/api/v1/seed", { method: "POST" });
     if (res.ok) {
       alert("Seed data successfully populated!");
       window.location.reload();
