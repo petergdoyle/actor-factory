@@ -57,7 +57,8 @@ export default function AuditLogManager() {
       const res = await fetch(`${getApiBaseUrl()}/llm/audit-logs/search?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setLogs(data.entries || []);
+        // API may return a bare array or { entries: [...] }
+        setLogs(Array.isArray(data) ? data : (data.entries || []));
       }
     } catch (e) {
       console.error("Failed to fetch audit logs", e);
@@ -71,7 +72,18 @@ export default function AuditLogManager() {
       const res = await fetch(`${getApiBaseUrl()}/llm/audit-logs/config`);
       if (res.ok) {
         const data = await res.json();
-        setConfig(data.logging_enabled || {});
+        // API returns { known_call_types: [...], disabled_call_types: [...] }
+        // Build a Record<string, boolean> map for the UI
+        if (data.logging_enabled) {
+          setConfig(data.logging_enabled);
+        } else if (data.known_call_types) {
+          const disabled = new Set(data.disabled_call_types || []);
+          const configMap: Record<string, boolean> = {};
+          for (const ct of data.known_call_types) {
+            configMap[ct] = !disabled.has(ct);
+          }
+          setConfig(configMap);
+        }
       }
     } catch (e) {
       console.error("Failed to fetch audit log config", e);
@@ -82,10 +94,14 @@ export default function AuditLogManager() {
     const newConfig = { ...config, [key]: enabled };
     setConfig(newConfig);
     try {
+      // Send as disabled_call_types array (matching API shape)
+      const disabled_call_types = Object.entries(newConfig)
+        .filter(([, v]) => !v)
+        .map(([k]) => k);
       await fetch(`${getApiBaseUrl()}/llm/audit-logs/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ logging_enabled: newConfig })
+        body: JSON.stringify({ disabled_call_types })
       });
     } catch (e) {
       console.error("Failed to update audit log config", e);
