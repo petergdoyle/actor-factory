@@ -1,31 +1,27 @@
 "use client";
 import { useState, useEffect } from 'react';
+import { getApiBaseUrl } from '../utils/api';
 
 export interface Domain {
   id?: string;
-  name: str;
-  description: str;
-  parameters: Record<string, any>;
+  name: string;
+  description: string;
+  parameters: Record<string, string>;
 }
-
-const API_BASE = "http://localhost:8000/api/v1";
 
 export default function DomainManager() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(false);
 
   // Form State
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [paramsJson, setParamsJson] = useState("{\n  \"architecture_style\": \"microservices\"\n}");
-  const [jsonError, setJsonError] = useState("");
+  const [paramJson, setParamJson] = useState("{\n}");
 
   const loadDomains = async () => {
     try {
-      setLoading(true);
-      const res = await fetch(`${API_BASE}/domains`);
+      const res = await fetch(`${getApiBaseUrl()}/domains`);
       if (res.ok) {
         const data = await res.json();
         setDomains(data);
@@ -35,8 +31,6 @@ export default function DomainManager() {
       }
     } catch (e) {
       console.error(e);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -47,38 +41,35 @@ export default function DomainManager() {
   const selectDomain = (d: Domain) => {
     setSelectedId(d.id || null);
     setName(d.name);
-    setDescription(d.description || "");
-    setParamsJson(JSON.stringify(d.parameters || {}, null, 2));
-    setJsonError("");
+    setDescription(d.description);
+    setParamJson(JSON.stringify(d.parameters, null, 2));
   };
 
   const handleNew = () => {
     setSelectedId(null);
     setName("");
     setDescription("");
-    setParamsJson("{\n  \n}");
-    setJsonError("");
+    setParamJson("{\n  \"key\": \"value\"\n}");
   };
 
   const handleSave = async () => {
-    setJsonError("");
+    if (!name.trim()) return alert("Domain name is required.");
     let parsedParams = {};
     try {
-      parsedParams = JSON.parse(paramsJson);
-    } catch (e: any) {
-      setJsonError("Invalid JSON in Parameters");
-      return;
+      parsedParams = JSON.parse(paramJson);
+    } catch (e) {
+      return alert("Invalid JSON in Parameters field.");
     }
 
     const payload: Domain = {
       id: selectedId || undefined,
       name,
       description,
-      parameters: parsedParams,
+      parameters: parsedParams
     };
 
     try {
-      const res = await fetch(`${API_BASE}/domains`, {
+      const res = await fetch(`${getApiBaseUrl()}/domains`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -94,9 +85,9 @@ export default function DomainManager() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this Domain?")) return;
+    if (!confirm("Are you sure you want to delete this domain?")) return;
     try {
-      const res = await fetch(`${API_BASE}/domains/${id}`, { method: "DELETE" });
+      const res = await fetch(`${getApiBaseUrl()}/domains/${id}`, { method: "DELETE" });
       if (res.ok) {
         await loadDomains();
         handleNew();
@@ -122,21 +113,18 @@ export default function DomainManager() {
           </button>
         </div>
 
-        <div className="search-box">
-          <span className="search-icon">🔍</span>
-          <input 
-            type="text" 
-            placeholder="Filter domains..." 
-            value={search} 
-            onChange={e => setSearch(e.target.value)} 
-          />
-        </div>
+        <input 
+          type="text" 
+          placeholder="Filter domains..." 
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
 
         <div className="entity-card-list">
           {filtered.length === 0 ? (
             <div className="empty-state">
               <span className="empty-state-icon">🌐</span>
-              <p>No domains found.</p>
+              <p>No problem domains defined yet.</p>
             </div>
           ) : (
             filtered.map(d => (
@@ -151,8 +139,8 @@ export default function DomainManager() {
                 </div>
                 <p className="entity-card-desc">{d.description || "No description provided."}</p>
                 <div className="tag-container">
-                  {Object.keys(d.parameters || {}).slice(0, 3).map(k => (
-                    <span key={k} className="tag-chip accent">{k}</span>
+                  {Object.keys(d.parameters || {}).map(key => (
+                    <span key={key} className="tag-chip">{key}</span>
                   ))}
                 </div>
               </div>
@@ -164,7 +152,7 @@ export default function DomainManager() {
       {/* Right Editor Form */}
       <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '20px' }}>{selectedId ? "Edit Domain" : "Create New Domain"}</h2>
+          <h2 style={{ fontSize: '20px' }}>{selectedId ? "Edit Domain" : "Create Problem Domain"}</h2>
           {selectedId && (
             <button className="btn-danger" onClick={() => handleDelete(selectedId)}>
               Delete
@@ -176,34 +164,36 @@ export default function DomainManager() {
           <label>Domain Name</label>
           <input 
             type="text" 
-            placeholder="e.g. Software Engineering, Health Tech, Supply Chain" 
             value={name} 
             onChange={e => setName(e.target.value)} 
+            placeholder="e.g. Software Engineering, Logistics, Finance" 
           />
         </div>
 
         <div className="form-group">
           <label>Description</label>
           <textarea 
-            placeholder="Describe the operational boundaries of this domain..." 
             value={description} 
             onChange={e => setDescription(e.target.value)} 
+            placeholder="High-level description of this operational domain..." 
+            style={{ minHeight: '80px' }}
           />
         </div>
 
-        <div className="form-group">
+        <div className="form-group" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           <label>Domain Parameters (JSON Schema / Defaults)</label>
           <textarea 
-            style={{ fontFamily: 'Geist Mono, monospace', minHeight: '180px' }} 
-            value={paramsJson} 
-            onChange={e => setParamsJson(e.target.value)} 
+            value={paramJson} 
+            onChange={e => setParamJson(e.target.value)} 
+            style={{ fontFamily: 'Geist Mono, monospace', flex: 1, minHeight: '160px' }}
           />
-          {jsonError && <span style={{ color: 'var(--error)', fontSize: '12px', marginTop: '4px', display: 'block' }}>{jsonError}</span>}
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: 'auto' }}>
-          <button className="btn-secondary" onClick={handleNew}>Cancel</button>
-          <button className="btn-primary" onClick={handleSave} disabled={!name.trim()}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          <button className="btn-secondary" onClick={() => selectedId ? selectDomain(domains.find(d => d.id === selectedId)!) : handleNew()}>
+            Cancel
+          </button>
+          <button className="btn-primary" onClick={handleSave}>
             Save Domain
           </button>
         </div>

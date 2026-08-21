@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from 'react';
+import { getApiBaseUrl } from '../utils/api';
 
 export interface Skill {
   id?: string;
@@ -12,8 +13,6 @@ export interface Skill {
   anti_patterns: string[];
 }
 
-const API_BASE = "http://localhost:8000/api/v1";
-
 export default function SkillManager() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -23,9 +22,8 @@ export default function SkillManager() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [outputFormat, setOutputFormat] = useState("");
-  const [validationLevel, setValidationLevel] = useState<"machine" | "structural" | "heuristic" | "human">("heuristic");
+  const [validationLevel, setValidationLevel] = useState<Skill["validation_level"]>("heuristic");
 
-  // Lists
   const [validationRules, setValidationRules] = useState<string[]>([]);
   const [newRule, setNewRule] = useState("");
 
@@ -37,7 +35,7 @@ export default function SkillManager() {
 
   const loadSkills = async () => {
     try {
-      const res = await fetch(`${API_BASE}/skills`);
+      const res = await fetch(`${getApiBaseUrl()}/skills`);
       if (res.ok) {
         const data = await res.json();
         setSkills(data);
@@ -77,6 +75,8 @@ export default function SkillManager() {
   };
 
   const handleSave = async () => {
+    if (!name.trim()) return alert("Skill name is required.");
+
     const payload: Skill = {
       id: selectedId || undefined,
       name,
@@ -89,7 +89,7 @@ export default function SkillManager() {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/skills`, {
+      const res = await fetch(`${getApiBaseUrl()}/skills`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -107,7 +107,7 @@ export default function SkillManager() {
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this Skill?")) return;
     try {
-      const res = await fetch(`${API_BASE}/skills/${id}`, { method: "DELETE" });
+      const res = await fetch(`${getApiBaseUrl()}/skills/${id}`, { method: "DELETE" });
       if (res.ok) {
         await loadSkills();
         handleNew();
@@ -129,7 +129,7 @@ export default function SkillManager() {
 
   const filtered = skills.filter(s => 
     s.name.toLowerCase().includes(search.toLowerCase()) || 
-    s.description.toLowerCase().includes(search.toLowerCase())
+    (s.description && s.description.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -137,27 +137,24 @@ export default function SkillManager() {
       {/* Left List */}
       <div className="entity-list-col">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '18px' }}>Executable Skills ({skills.length})</h2>
+          <h2 style={{ fontSize: '18px' }}>Skills ({skills.length})</h2>
           <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '13px' }} onClick={handleNew}>
             + New Skill
           </button>
         </div>
 
-        <div className="search-box">
-          <span className="search-icon">🔍</span>
-          <input 
-            type="text" 
-            placeholder="Filter skills..." 
-            value={search} 
-            onChange={e => setSearch(e.target.value)} 
-          />
-        </div>
+        <input 
+          type="text" 
+          placeholder="Filter skills..." 
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
 
         <div className="entity-card-list">
           {filtered.length === 0 ? (
             <div className="empty-state">
               <span className="empty-state-icon">⚡</span>
-              <p>No skills found.</p>
+              <p>No skills defined yet.</p>
             </div>
           ) : (
             filtered.map(s => (
@@ -168,16 +165,16 @@ export default function SkillManager() {
               >
                 <div className="entity-card-header">
                   <span className="entity-card-title">{s.name}</span>
-                  <span className={`badge ${s.validation_level === 'machine' ? 'success' : s.validation_level === 'structural' ? 'active' : 'warning'}`}>
+                  <span className={`badge ${s.validation_level === 'machine' ? 'success' : ''}`}>
                     {s.validation_level}
                   </span>
                 </div>
                 <p className="entity-card-desc">{s.description || "No description."}</p>
-                {s.output_format && (
-                  <span className="tag-chip accent" style={{ fontSize: '10px' }}>
-                    📄 {s.output_format.slice(0, 40)}
-                  </span>
-                )}
+                <div className="tag-container">
+                  {s.validation_rules.slice(0, 2).map((r, i) => (
+                    <span key={i} className="tag-chip">{r}</span>
+                  ))}
+                </div>
               </div>
             ))
           )}
@@ -187,7 +184,7 @@ export default function SkillManager() {
       {/* Right Editor Form */}
       <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', maxHeight: 'calc(100vh - 140px)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '20px' }}>{selectedId ? "Edit Skill" : "Create New Skill"}</h2>
+          <h2 style={{ fontSize: '20px' }}>{selectedId ? "Edit Skill" : "Create Executable Skill"}</h2>
           {selectedId && (
             <button className="btn-danger" onClick={() => handleDelete(selectedId)}>
               Delete
@@ -200,28 +197,33 @@ export default function SkillManager() {
             <label>Skill Name</label>
             <input 
               type="text" 
-              placeholder="e.g. Mermaid Diagram Building, User Story Writing" 
               value={name} 
               onChange={e => setName(e.target.value)} 
+              placeholder="e.g. Mermaid Diagram Building, INVEST Story Writing" 
             />
           </div>
+
           <div className="form-group">
             <label>Validation Level</label>
-            <select value={validationLevel} onChange={e => setValidationLevel(e.target.value as any)}>
-              <option value="machine">Machine (Binary Parser / Deterministic)</option>
-              <option value="structural">Structural (Schema / Template Conformance)</option>
-              <option value="heuristic">Heuristic (Coverage / Rules)</option>
-              <option value="human">Human (Subjective Judgment)</option>
+            <select 
+              value={validationLevel} 
+              onChange={e => setValidationLevel(e.target.value as Skill["validation_level"])}
+            >
+              <option value="machine">Machine (Binary Parser / Compiler)</option>
+              <option value="structural">Structural (Schema / Template Rules)</option>
+              <option value="heuristic">Heuristic (Rule-Based Coverage)</option>
+              <option value="human">Human (Subjective Review)</option>
             </select>
           </div>
         </div>
 
         <div className="form-group">
-          <label>Description & Purpose</label>
+          <label>Description</label>
           <textarea 
-            placeholder="Describes what artifact or executable output this skill produces..." 
             value={description} 
             onChange={e => setDescription(e.target.value)} 
+            placeholder="What capability does this skill deliver..." 
+            style={{ minHeight: '60px' }}
           />
         </div>
 
@@ -229,78 +231,89 @@ export default function SkillManager() {
           <label>Output Format Specification</label>
           <input 
             type="text" 
-            placeholder="e.g. ```mermaid code block``` or OpenAPI 3.0 YAML" 
             value={outputFormat} 
             onChange={e => setOutputFormat(e.target.value)} 
+            placeholder="e.g. ```mermaid code block``` or OpenAPI 3.0 YAML" 
           />
         </div>
 
         {/* Validation Rules */}
         <div className="form-group">
-          <label>Validation Rules</label>
-          <div className="list-input-row">
+          <label>Validation Rules (Must-pass structural constraints)</label>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
             <input 
               type="text" 
-              placeholder="Add validation rule (e.g. Must parse without errors in mermaid.js)" 
-              value={newRule} 
+              placeholder="Add validation rule..." 
+              value={newRule}
               onChange={e => setNewRule(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addItem(validationRules, setValidationRules, newRule, setNewRule))}
+              onKeyDown={e => e.key === 'Enter' && addItem(validationRules, setValidationRules, newRule, setNewRule)}
             />
-            <button className="btn-secondary" onClick={() => addItem(validationRules, setValidationRules, newRule, setNewRule)}>Add</button>
+            <button className="btn-secondary" style={{ padding: '0 16px' }} onClick={() => addItem(validationRules, setValidationRules, newRule, setNewRule)}>
+              Add
+            </button>
           </div>
-          {validationRules.map((r, i) => (
-            <div key={i} className="list-item-badge">
-              <span>⚖️ {r}</span>
-              <span className="delete-icon" onClick={() => removeItem(validationRules, setValidationRules, i)}>✕</span>
-            </div>
-          ))}
+          <div className="tag-container">
+            {validationRules.map((r, i) => (
+              <span key={i} className="tag-chip accent">
+                {r}
+                <button className="tag-chip-remove" onClick={() => removeItem(validationRules, setValidationRules, i)}>×</button>
+              </span>
+            ))}
+          </div>
         </div>
 
         {/* Quality Patterns */}
         <div className="form-group">
-          <label>Quality Patterns (What Good Looks Like)</label>
-          <div className="list-input-row">
+          <label>Quality Patterns (Best practices to demonstrate)</label>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
             <input 
               type="text" 
-              placeholder="Add quality pattern (e.g. Nodes have descriptive labels, not A/B/C)" 
-              value={newQuality} 
+              placeholder="Add quality pattern..." 
+              value={newQuality}
               onChange={e => setNewQuality(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addItem(qualityPatterns, setQualityPatterns, newQuality, setNewQuality))}
+              onKeyDown={e => e.key === 'Enter' && addItem(qualityPatterns, setQualityPatterns, newQuality, setNewQuality)}
             />
-            <button className="btn-secondary" onClick={() => addItem(qualityPatterns, setQualityPatterns, newQuality, setNewQuality)}>Add</button>
+            <button className="btn-secondary" style={{ padding: '0 16px' }} onClick={() => addItem(qualityPatterns, setQualityPatterns, newQuality, setNewQuality)}>
+              Add
+            </button>
           </div>
-          {qualityPatterns.map((q, i) => (
-            <div key={i} className="list-item-badge" style={{ borderColor: 'rgba(52, 211, 153, 0.3)' }}>
-              <span style={{ color: 'var(--success)' }}>✓ {q}</span>
-              <span className="delete-icon" onClick={() => removeItem(qualityPatterns, setQualityPatterns, i)}>✕</span>
-            </div>
-          ))}
+          <div className="tag-container">
+            {qualityPatterns.map((qp, i) => (
+              <span key={i} className="tag-chip accent">
+                {qp}
+                <button className="tag-chip-remove" onClick={() => removeItem(qualityPatterns, setQualityPatterns, i)}>×</button>
+              </span>
+            ))}
+          </div>
         </div>
 
-        {/* Anti-Patterns */}
+        {/* Anti Patterns */}
         <div className="form-group">
-          <label>Anti-Patterns (What to Avoid)</label>
-          <div className="list-input-row">
+          <label>Anti-Patterns (Mistakes to explicitly avoid)</label>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
             <input 
               type="text" 
-              placeholder="Add anti-pattern (e.g. Single-letter node names with no context)" 
-              value={newAnti} 
+              placeholder="Add anti-pattern..." 
+              value={newAnti}
               onChange={e => setNewAnti(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addItem(antiPatterns, setAntiPatterns, newAnti, setNewAnti))}
+              onKeyDown={e => e.key === 'Enter' && addItem(antiPatterns, setAntiPatterns, newAnti, setNewAnti)}
             />
-            <button className="btn-secondary" onClick={() => addItem(antiPatterns, setAntiPatterns, newAnti, setNewAnti)}>Add</button>
+            <button className="btn-secondary" style={{ padding: '0 16px' }} onClick={() => addItem(antiPatterns, setAntiPatterns, newAnti, setNewAnti)}>
+              Add
+            </button>
           </div>
-          {antiPatterns.map((a, i) => (
-            <div key={i} className="list-item-badge" style={{ borderColor: 'rgba(248, 113, 113, 0.3)' }}>
-              <span style={{ color: 'var(--error)' }}>✗ {a}</span>
-              <span className="delete-icon" onClick={() => removeItem(antiPatterns, setAntiPatterns, i)}>✕</span>
-            </div>
-          ))}
+          <div className="tag-container">
+            {antiPatterns.map((ap, i) => (
+              <span key={i} className="tag-chip accent">
+                {ap}
+                <button className="tag-chip-remove" onClick={() => removeItem(antiPatterns, setAntiPatterns, i)}>×</button>
+              </span>
+            ))}
+          </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
-          <button className="btn-secondary" onClick={handleNew}>Cancel</button>
-          <button className="btn-primary" onClick={handleSave} disabled={!name.trim()}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+          <button className="btn-primary" onClick={handleSave}>
             Save Skill
           </button>
         </div>

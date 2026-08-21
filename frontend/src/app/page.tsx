@@ -8,6 +8,7 @@ import Composer, { Composition } from './components/Composer';
 import TestBench from './components/TestBench';
 import LLMConfigManager from './components/LLMConfigManager';
 import AuditLogManager from './components/AuditLogManager';
+import { getApiBaseUrl } from './utils/api';
 
 type Tab = 'domains' | 'actors' | 'skills' | 'specializations' | 'composer' | 'testbench' | 'llm_configs' | 'audit_logs';
 
@@ -35,7 +36,7 @@ export default function Home() {
 
   const checkHealth = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/v1/health/stack");
+      const res = await fetch(`${getApiBaseUrl()}/health/stack`);
       if (res.ok) {
         const data = await res.json();
         setStackHealth({
@@ -68,7 +69,7 @@ export default function Home() {
   const handleSeedData = async () => {
     if (!confirm("Seed database with default Domains, Personas, Skills, Specializations, and LLM Configs?")) return;
     try {
-      const res = await fetch("http://localhost:8000/api/v1/seed", { method: "POST" });
+      const res = await fetch(`${getApiBaseUrl()}/seed`, { method: "POST" });
       if (res.ok) {
         alert("Seed data successfully populated!");
         window.location.reload();

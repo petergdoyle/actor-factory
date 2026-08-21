@@ -1,57 +1,43 @@
 "use client";
 import { useState, useEffect } from 'react';
+import { getApiBaseUrl } from '../utils/api';
 
-export interface LLMProviderConfig {
-  id: str;
-  name: str;
+export interface LLMConfig {
+  id: string;
+  name: string;
   provider_type: 'ollama' | 'openai' | 'anthropic' | 'bedrock' | 'mock';
-  base_url?: string;
+  base_url: string;
   api_key?: string;
   active_model: string;
   is_active: boolean;
-  status: 'online' | 'offline' | 'unconfigured';
+  status: 'online' | 'offline' | 'unconfigured' | 'error';
   available_models: string[];
 }
 
-const API_BASE = "http://localhost:8000/api/v1";
-
 export default function LLMConfigManager({ onConfigChanged }: { onConfigChanged?: () => void }) {
-  const [configs, setConfigs] = useState<LLMProviderConfig[]>([]);
-  const [activeConfigId, setActiveConfigId] = useState<string>("ollama_local");
-  const [activeModel, setActiveModel] = useState<string>("llama3");
+  const [configs, setConfigs] = useState<LLMConfig[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ status: string; latency_ms: number; message: string } | null>(null);
 
-  // Editing state per provider
-  const [editUrls, setEditUrls] = useState<Record<string, string>>({});
-  const [editKeys, setEditKeys] = useState<Record<string, string>>({});
-
-  // Test state
-  const [testingId, setTestingId] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<Record<string, any>>({});
-  const [savingActive, setSavingActive] = useState(false);
+  // Form State
+  const [id, setId] = useState('');
+  const [name, setName] = useState('');
+  const [providerType, setProviderType] = useState<LLMConfig['provider_type']>('ollama');
+  const [baseUrl, setBaseUrl] = useState('http://localhost:11434');
+  const [apiKey, setApiKey] = useState('');
+  const [activeModel, setActiveModel] = useState('gemma4:12b');
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [newModel, setNewModel] = useState('');
 
   const loadConfigs = async () => {
     try {
-      const res = await fetch(`${API_BASE}/llm/configs`);
+      const res = await fetch(`${getApiBaseUrl()}/llm/configs`);
       if (res.ok) {
-        const data: LLMProviderConfig[] = await res.json();
+        const data = await res.json();
         setConfigs(data);
-
-        // Pre-fill edit fields
-        const urls: Record<string, string> = {};
-        const keys: Record<string, string> = {};
-        let activeCfg = data.find(c => c.is_active);
-        if (!activeCfg && data.length > 0) activeCfg = data[0];
-
-        data.forEach(c => {
-          urls[c.id] = c.base_url || "";
-          keys[c.id] = c.api_key || "";
-        });
-        setEditUrls(urls);
-        setEditKeys(keys);
-
-        if (activeCfg) {
-          setActiveConfigId(activeCfg.id);
-          setActiveModel(activeCfg.active_model);
+        if (data.length > 0 && !selectedId) {
+          selectConfig(data[0]);
         }
       }
     } catch (e) {
@@ -63,70 +49,118 @@ export default function LLMConfigManager({ onConfigChanged }: { onConfigChanged?
     loadConfigs();
   }, []);
 
-  const handleSaveActiveConfig = async () => {
-    setSavingActive(true);
+  const selectConfig = (c: LLMConfig) => {
+    setSelectedId(c.id);
+    setId(c.id);
+    setName(c.name);
+    setProviderType(c.provider_type);
+    setBaseUrl(c.base_url || '');
+    setApiKey(c.api_key || '');
+    setActiveModel(c.active_model || '');
+    setAvailableModels(c.available_models || []);
+    setTestResult(null);
+  };
+
+  const handleNew = () => {
+    setSelectedId(null);
+    setId(`provider_${Date.now()}`);
+    setName('');
+    setProviderType('ollama');
+    setBaseUrl('http://localhost:11434');
+    setApiKey('');
+    setActiveModel('gemma4:12b');
+    setAvailableModels(['gemma4:12b', 'llama3']);
+    setTestResult(null);
+  };
+
+  const handleSave = async () => {
+    if (!name.trim()) return alert("Provider name is required.");
+
+    const payload: LLMConfig = {
+      id: id || `provider_${Date.now()}`,
+      name,
+      provider_type: providerType,
+      base_url: baseUrl,
+      api_key: apiKey,
+      active_model: activeModel,
+      is_active: selectedId ? (configs.find(c => c.id === selectedId)?.is_active || false) : false,
+      status: 'offline',
+      available_models: availableModels
+    };
+
     try {
-      const res = await fetch(`${API_BASE}/llm/active`, {
+      const res = await fetch(`${getApiBaseUrl()}/llm/configs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          config_id: activeConfigId,
-          active_model: activeModel
-        })
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
+        const saved = await res.json();
         await loadConfigs();
+        selectConfig(saved);
         if (onConfigChanged) onConfigChanged();
       }
     } catch (e) {
       console.error(e);
-    } finally {
-      setSavingActive(false);
     }
   };
 
-  const handleTestConnection = async (config: LLMProviderConfig) => {
-    setTestingId(config.id);
+  const handleTestConnection = async () => {
+    setIsTesting(true);
+    setTestResult(null);
+
     try {
-      const res = await fetch(`${API_BASE}/llm/test`, {
+      const res = await fetch(`${getApiBaseUrl()}/llm/test`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          config_id: config.id,
-          base_url: editUrls[config.id] || config.base_url,
-          api_key: editKeys[config.id] || config.api_key,
-          provider_type: config.provider_type
+          provider_type: providerType,
+          base_url: baseUrl,
+          api_key: apiKey,
+          model_id: activeModel
         })
       });
+
       if (res.ok) {
-        const result = await res.json();
-        setTestResult(prev => ({ ...prev, [config.id]: result }));
-        // Reload configs to catch updated status / model list
-        loadConfigs();
-        if (onConfigChanged) onConfigChanged();
+        const data = await res.json();
+        setTestResult({
+          status: data.status,
+          latency_ms: data.latency_ms,
+          message: data.message
+        });
+
+        if (data.available_models && data.available_models.length > 0) {
+          setAvailableModels(data.available_models);
+        }
+      } else {
+        setTestResult({
+          status: 'error',
+          latency_ms: 0,
+          message: `HTTP Error ${res.status}: Failed to reach provider endpoint`
+        });
       }
     } catch (e: any) {
-      setTestResult(prev => ({
-        ...prev,
-        [config.id]: { status: "offline", message: e.message }
-      }));
+      setTestResult({
+        status: 'error',
+        latency_ms: 0,
+        message: e.message || 'Connection failed'
+      });
     } finally {
-      setTestingId(null);
+      setIsTesting(false);
     }
   };
 
-  const handleSaveProviderSettings = async (config: LLMProviderConfig) => {
-    const updated: LLMProviderConfig = {
-      ...config,
-      base_url: editUrls[config.id] || "",
-      api_key: editKeys[config.id] || ""
-    };
+  const handleSetActive = async (configId: string) => {
     try {
-      const res = await fetch(`${API_BASE}/llm/configs`, {
+      const res = await fetch(`${getApiBaseUrl()}/llm/active`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updated)
+        body: JSON.stringify({
+          config_id: configId,
+          model_id: activeModel
+        })
       });
+
       if (res.ok) {
         await loadConfigs();
         if (onConfigChanged) onConfigChanged();
@@ -136,178 +170,200 @@ export default function LLMConfigManager({ onConfigChanged }: { onConfigChanged?
     }
   };
 
-  const selectedProviderConfig = configs.find(c => c.id === activeConfigId);
-  const availableModelsForActive = selectedProviderConfig?.available_models.length 
-    ? selectedProviderConfig.available_models 
-    : [selectedProviderConfig?.active_model || "llama3", "llama3", "llama3.2", "gemma3:12b", "mistral", "mermaid-fixer", "gpt-4o", "claude-3-5-sonnet"];
+  const handleDelete = async (configId: string) => {
+    if (!confirm("Are you sure you want to remove this LLM provider configuration?")) return;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/llm/configs/${configId}`, { method: "DELETE" });
+      if (res.ok) {
+        await loadConfigs();
+        handleNew();
+        if (onConfigChanged) onConfigChanged();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const addModel = () => {
+    if (!newModel.trim()) return;
+    if (!availableModels.includes(newModel.trim())) {
+      setAvailableModels([...availableModels, newModel.trim()]);
+    }
+    setNewModel('');
+  };
+
+  const removeModel = (m: string) => {
+    setAvailableModels(availableModels.filter(item => item !== m));
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      
-      {/* Informational Banner */}
-      <div className="glass-panel" style={{ background: 'rgba(107, 124, 255, 0.08)', borderColor: 'rgba(107, 124, 255, 0.2)' }}>
-        <h3 style={{ fontSize: '16px', color: 'var(--text-accent)', marginBottom: '6px' }}>
-          🤖 What are LLM Provider Configurations?
-        </h3>
-        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-          ActorFactory supports multiple LLM engines — from local private Small Language Models (Ollama, llama3, gemma3:12b) to cloud providers (OpenAI, Anthropic, AWS Bedrock).
-          Configure your provider endpoints, test latency, and set the active default model used for composition execution.
-        </p>
-      </div>
-
-      {/* Active LLM Configuration Box */}
-      <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div className="split-view">
+      {/* Left List */}
+      <div className="entity-list-col">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '18px' }}>⚡ Active LLM Engine Configuration</h2>
-          <span className="badge active">System Primary</span>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>Active Provider</label>
-            <select 
-              value={activeConfigId} 
-              onChange={e => {
-                const newId = e.target.value;
-                setActiveConfigId(newId);
-                const cfg = configs.find(c => c.id === newId);
-                if (cfg) setActiveModel(cfg.active_model);
-              }}
-            >
-              {configs.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.provider_type}) {c.is_active ? "★ Active" : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>Target Model</label>
-            <select value={activeModel} onChange={e => setActiveModel(e.target.value)}>
-              {availableModelsForActive.map(m => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-            <span style={{ fontSize: '11px', color: 'var(--success)', marginTop: '4px', display: 'block' }}>
-              ✓ {availableModelsForActive.length} models available for {selectedProviderConfig?.name || activeConfigId}
-            </span>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
-          <button className="btn-primary" onClick={handleSaveActiveConfig} disabled={savingActive}>
-            {savingActive ? "Saving..." : "Save Configuration"}
+          <h2 style={{ fontSize: '18px' }}>LLM Providers ({configs.length})</h2>
+          <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '13px' }} onClick={handleNew}>
+            + Add Provider
           </button>
         </div>
+
+        <div className="entity-card-list">
+          {configs.map(c => (
+            <div 
+              key={c.id} 
+              className={`entity-card ${c.id === selectedId ? 'selected' : ''}`}
+              onClick={() => selectConfig(c)}
+            >
+              <div className="entity-card-header">
+                <span className="entity-card-title">{c.name}</span>
+                <span className={`badge ${c.is_active ? 'success' : ''}`}>
+                  {c.is_active ? 'Active Default' : c.status}
+                </span>
+              </div>
+              <p className="entity-card-desc" style={{ fontFamily: 'Geist Mono, monospace', fontSize: '12px' }}>
+                {c.provider_type.toUpperCase()} • {c.active_model || 'No model selected'}
+              </p>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                {c.base_url || 'Cloud API'}
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Available Providers List */}
-      <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <h2 style={{ fontSize: '18px' }}>Configured LLM Providers</h2>
+      {/* Right Form */}
+      <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', maxHeight: 'calc(100vh - 140px)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ fontSize: '20px' }}>{selectedId ? `Configure ${name}` : 'Add LLM Provider'}</h2>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {selectedId && (
+              <button className="btn-secondary" onClick={() => handleSetActive(selectedId)}>
+                Set Active Default
+              </button>
+            )}
+            {selectedId && (
+              <button className="btn-danger" onClick={() => handleDelete(selectedId)}>
+                Delete Provider
+              </button>
+            )}
+          </div>
+        </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {configs.map(c => {
-            const result = testResult[c.id];
-            return (
-              <div 
-                key={c.id} 
-                className="glass-panel" 
-                style={{ 
-                  background: 'var(--bg-secondary)', 
-                  padding: '20px',
-                  borderColor: c.is_active ? 'var(--accent-color)' : 'var(--border-color)' 
-                }}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div className="form-group">
+            <label>Provider Name</label>
+            <input 
+              type="text" 
+              value={name} 
+              onChange={e => setName(e.target.value)} 
+              placeholder="e.g. Ollama Local Daemon, Azure OpenAI, Anthropic" 
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Provider Type</label>
+            <select 
+              value={providerType} 
+              onChange={e => setProviderType(e.target.value as LLMConfig['provider_type'])}
+            >
+              <option value="ollama">Ollama Local Daemon</option>
+              <option value="openai">OpenAI API</option>
+              <option value="anthropic">Anthropic Claude API</option>
+              <option value="bedrock">AWS Bedrock</option>
+              <option value="mock">Mock Provider (Local Testing)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div className="form-group">
+            <label>Base URL Endpoint</label>
+            <input 
+              type="text" 
+              value={baseUrl} 
+              onChange={e => setBaseUrl(e.target.value)} 
+              placeholder="e.g. http://localhost:11434 or https://api.openai.com/v1" 
+            />
+          </div>
+
+          <div className="form-group">
+            <label>API Key (Optional for local Ollama)</label>
+            <input 
+              type="password" 
+              value={apiKey} 
+              onChange={e => setApiKey(e.target.value)} 
+              placeholder="sk-..." 
+            />
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label>Active Default Model ID</label>
+          <input 
+            type="text" 
+            value={activeModel} 
+            onChange={e => setActiveModel(e.target.value)} 
+            placeholder="e.g. gemma4:12b, llama3, gpt-4o, claude-3-5-sonnet" 
+          />
+        </div>
+
+        {/* Model Discovery / List */}
+        <div className="form-group">
+          <label>Available Models Catalog</label>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+            <input 
+              type="text" 
+              value={newModel} 
+              onChange={e => setNewModel(e.target.value)} 
+              placeholder="Add model ID..." 
+              onKeyDown={e => e.key === 'Enter' && addModel()}
+            />
+            <button className="btn-secondary" style={{ padding: '0 16px' }} onClick={addModel}>
+              Add Model
+            </button>
+          </div>
+          <div className="tag-container">
+            {availableModels.map(m => (
+              <span 
+                key={m} 
+                className={`tag-chip ${m === activeModel ? 'accent' : ''}`}
+                onClick={() => setActiveModel(m)}
+                style={{ cursor: 'pointer' }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span className={`badge ${c.status === 'online' ? 'success' : c.status === 'offline' ? 'warning' : ''}`}>
-                      {c.status === 'online' ? '🟢 Online' : c.status === 'offline' ? '🔴 Offline' : '⚪ Unconfigured'}
-                    </span>
-                    <h3 style={{ fontSize: '16px' }}>{c.name}</h3>
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>({c.provider_type})</span>
-                    {c.is_active && <span className="badge active">Active Default</span>}
-                  </div>
+                {m} {m === activeModel ? '★' : ''}
+                <button className="tag-chip-remove" onClick={(e) => { e.stopPropagation(); removeModel(m); }}>×</button>
+              </span>
+            ))}
+          </div>
+        </div>
 
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <button 
-                      className="btn-secondary" 
-                      style={{ padding: '6px 12px', fontSize: '12px' }}
-                      onClick={() => handleTestConnection(c)}
-                      disabled={testingId === c.id}
-                    >
-                      {testingId === c.id ? "Testing..." : "⚡ Test Connection"}
-                    </button>
-                  </div>
-                </div>
+        {/* Connection Test Results */}
+        {testResult && (
+          <div className={`glass-panel ${testResult.status === 'online' ? 'success' : 'error'}`} style={{ padding: '12px 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600 }}>
+                {testResult.status === 'online' ? '✅ Connection Successful' : '❌ Connection Failed'}
+              </span>
+              {testResult.latency_ms > 0 && (
+                <span className="badge">{testResult.latency_ms}ms</span>
+              )}
+            </div>
+            <p style={{ fontSize: '12px', marginTop: '4px' }}>{testResult.message}</p>
+          </div>
+        )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: c.provider_type === 'ollama' ? '2fr 1fr' : '1fr 1fr 1fr', gap: '12px', alignItems: 'end' }}>
-                  {c.provider_type === 'ollama' && (
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label>Base Endpoint URL</label>
-                      <input 
-                        type="text" 
-                        value={editUrls[c.id] ?? c.base_url ?? ""} 
-                        onChange={e => setEditUrls({ ...editUrls, [c.id]: e.target.value })}
-                        placeholder="http://localhost:11434" 
-                      />
-                    </div>
-                  )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
+          <button 
+            className="btn-secondary" 
+            onClick={handleTestConnection}
+            disabled={isTesting}
+          >
+            {isTesting ? 'Testing Latency...' : '⚡ Test Connection & Discover Models'}
+          </button>
 
-                  {c.provider_type !== 'ollama' && c.provider_type !== 'mock' && (
-                    <>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label>Base Endpoint URL</label>
-                        <input 
-                          type="text" 
-                          value={editUrls[c.id] ?? c.base_url ?? ""} 
-                          onChange={e => setEditUrls({ ...editUrls, [c.id]: e.target.value })}
-                          placeholder="https://api.openai.com/v1" 
-                        />
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label>API Key</label>
-                        <input 
-                          type="password" 
-                          value={editKeys[c.id] ?? c.api_key ?? ""} 
-                          onChange={e => setEditKeys({ ...editKeys, [c.id]: e.target.value })}
-                          placeholder="sk-..." 
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button 
-                      className="btn-secondary" 
-                      style={{ padding: '8px 14px', fontSize: '13px' }}
-                      onClick={() => handleSaveProviderSettings(c)}
-                    >
-                      Save Settings
-                    </button>
-                  </div>
-                </div>
-
-                {/* Connection Test Outcome */}
-                {result && (
-                  <div style={{ marginTop: '12px', padding: '10px 14px', borderRadius: '8px', background: result.status === 'online' ? 'rgba(52, 211, 153, 0.1)' : 'rgba(248, 113, 113, 0.1)', border: `1px solid ${result.status === 'online' ? 'rgba(52, 211, 153, 0.3)' : 'rgba(248, 113, 113, 0.3)'}` }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                      <span>{result.message}</span>
-                      {result.latency_ms > 0 && <span style={{ fontWeight: 600 }}>{result.latency_ms} ms</span>}
-                    </div>
-                    {result.models && result.models.length > 0 && (
-                      <div className="tag-container" style={{ marginTop: '8px' }}>
-                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', alignSelf: 'center' }}>Models:</span>
-                        {result.models.map((m: string) => (
-                          <span key={m} className="tag-chip accent">{m}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <button className="btn-primary" onClick={handleSave}>
+            Save Provider Configuration
+          </button>
         </div>
       </div>
     </div>

@@ -1,9 +1,7 @@
 "use client";
 import { useState, useEffect } from 'react';
+import { getApiBaseUrl } from '../utils/api';
 
-export interface Actor { id: string; name: string; title: string; }
-export interface Skill { id: string; name: string; validation_level: string; }
-export interface Specialization { id: string; name: string; }
 export interface Composition {
   id?: string;
   name: string;
@@ -12,51 +10,47 @@ export interface Composition {
   specialization_ids: string[];
 }
 
-const API_BASE = "http://localhost:8000/api/v1";
-
 export default function Composer({ onSelectForTesting }: { onSelectForTesting?: (comp: Composition, prompt: string) => void }) {
-  const [actors, setActors] = useState<Actor[]>([]);
-  const [skills, setSkills] = useState<Skill[]>([]);
-  const [specs, setSpecs] = useState<Specialization[]>([]);
+  const [actors, setActors] = useState<any[]>([]);
+  const [skills, setSkills] = useState<any[]>([]);
+  const [specializations, setSpecializations] = useState<any[]>([]);
   const [compositions, setCompositions] = useState<Composition[]>([]);
 
-  // Selection
-  const [selectedActorId, setSelectedActorId] = useState<string>("");
-  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
-  const [selectedSpecIds, setSelectedSpecIds] = useState<string[]>([]);
+  // Selected Matrix Ingredients
+  const [selectedActorId, setSelectedActorId] = useState<string>('');
+  const [selectedSkillId, setSelectedSkillId] = useState<string>('');
+  const [selectedSpecId, setSelectedSpecId] = useState<string>('');
 
-  // Preview & Save
-  const [compName, setCompName] = useState("");
-  const [compiledPrompt, setCompiledPrompt] = useState("");
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [compName, setCompName] = useState<string>('');
+  const [compiledPrompt, setCompiledPrompt] = useState<string>('');
+  const [isPreviewing, setIsPreviewing] = useState<boolean>(false);
 
   const loadData = async () => {
     try {
-      const [actorRes, skillRes, specRes, compRes] = await Promise.all([
-        fetch(`${API_BASE}/actors`),
-        fetch(`${API_BASE}/skills`),
-        fetch(`${API_BASE}/specializations`),
-        fetch(`${API_BASE}/compositions`)
+      const [actRes, sklRes, spcRes, cmpRes] = await Promise.all([
+        fetch(`${getApiBaseUrl()}/actors`),
+        fetch(`${getApiBaseUrl()}/skills`),
+        fetch(`${getApiBaseUrl()}/specializations`),
+        fetch(`${getApiBaseUrl()}/compositions`),
       ]);
-      if (actorRes.ok) {
-        const d = await actorRes.json();
-        setActors(d);
-        if (d.length > 0 && !selectedActorId) setSelectedActorId(d[0].id);
+
+      if (actRes.ok) {
+        const actData = await actRes.json();
+        setActors(actData);
+        if (actData.length > 0 && !selectedActorId) setSelectedActorId(actData[0].id);
       }
-      if (skillRes.ok) {
-        const d = await skillRes.json();
-        setSkills(d);
-        if (d.length > 0 && selectedSkillIds.length === 0) setSelectedSkillIds([d[0].id]);
+      if (sklRes.ok) {
+        const sklData = await sklRes.json();
+        setSkills(sklData);
+        if (sklData.length > 0 && !selectedSkillId) setSelectedSkillId(sklData[0].id);
       }
-      if (specRes.ok) {
-        const d = await specRes.json();
-        setSpecs(d);
-        if (d.length > 0 && selectedSpecIds.length === 0) setSelectedSpecIds([d[0].id]);
+      if (spcRes.ok) {
+        const spcData = await spcRes.json();
+        setSpecializations(spcData);
+        if (spcData.length > 0 && !selectedSpecId) setSelectedSpecId(spcData[0].id);
       }
-      if (compRes.ok) {
-        const d = await compRes.json();
-        setCompositions(d);
+      if (cmpRes.ok) {
+        setCompositions(await cmpRes.json());
       }
     } catch (e) {
       console.error(e);
@@ -67,73 +61,69 @@ export default function Composer({ onSelectForTesting }: { onSelectForTesting?: 
     loadData();
   }, []);
 
-  // Auto compile prompt when selections change
+  const selectedActor = actors.find(a => a.id === selectedActorId);
+  const selectedSkill = skills.find(s => s.id === selectedSkillId);
+  const selectedSpec = specializations.find(s => s.id === selectedSpecId);
+
+  // Auto-generate Composition Name
   useEffect(() => {
+    if (selectedActor && selectedSpec) {
+      setCompName(`${selectedActor.name} - ${selectedSpec.name}`);
+    }
+  }, [selectedActorId, selectedSpecId]);
+
+  // Real-time Preview Compilation
+  const handlePreview = async () => {
     if (!selectedActorId) return;
+    setIsPreviewing(true);
 
-    const compilePreview = async () => {
-      setPreviewLoading(true);
-      try {
-        const res = await fetch(`${API_BASE}/compose/preview`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            actor_id: selectedActorId,
-            skill_ids: selectedSkillIds,
-            specialization_ids: selectedSpecIds
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setCompiledPrompt(data.compiled_prompt);
-          if (!compName) {
-            setCompName(`${data.actor_name} + Skills`);
-          }
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setPreviewLoading(false);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/compose/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actor_id: selectedActorId,
+          skill_ids: selectedSkillId ? [selectedSkillId] : [],
+          specialization_ids: selectedSpecId ? [selectedSpecId] : []
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setCompiledPrompt(data.compiled_prompt);
       }
-    };
-
-    const timeout = setTimeout(compilePreview, 150);
-    return () => clearTimeout(timeout);
-  }, [selectedActorId, selectedSkillIds, selectedSpecIds]);
-
-  const toggleSkill = (id: string) => {
-    if (selectedSkillIds.includes(id)) {
-      setSelectedSkillIds(selectedSkillIds.filter(s => s !== id));
-    } else {
-      setSelectedSkillIds([...selectedSkillIds, id]);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsPreviewing(false);
     }
   };
 
-  const toggleSpec = (id: string) => {
-    if (selectedSpecIds.includes(id)) {
-      setSelectedSpecIds(selectedSpecIds.filter(s => s !== id));
-    } else {
-      setSelectedSpecIds([...selectedSpecIds, id]);
+  useEffect(() => {
+    if (selectedActorId) {
+      handlePreview();
     }
-  };
+  }, [selectedActorId, selectedSkillId, selectedSpecId]);
 
   const handleSaveComposition = async () => {
-    if (!selectedActorId || !compName.trim()) return;
+    if (!compName.trim()) return alert("Composition name is required.");
+    if (!selectedActorId) return alert("Must select a base Persona.");
+
     const payload: Composition = {
       name: compName,
       actor_id: selectedActorId,
-      skill_ids: selectedSkillIds,
-      specialization_ids: selectedSpecIds
+      skill_ids: selectedSkillId ? [selectedSkillId] : [],
+      specialization_ids: selectedSpecId ? [selectedSpecId] : []
     };
+
     try {
-      const res = await fetch(`${API_BASE}/compositions`, {
+      const res = await fetch(`${getApiBaseUrl()}/compositions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
       if (res.ok) {
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 2000);
+        alert("Composition Profile saved!");
         loadData();
       }
     } catch (e) {
@@ -141,142 +131,132 @@ export default function Composer({ onSelectForTesting }: { onSelectForTesting?: 
     }
   };
 
-  const loadSavedComposition = (c: Composition) => {
-    setSelectedActorId(c.actor_id);
-    setSelectedSkillIds(c.skill_ids || []);
-    setSelectedSpecIds(c.specialization_ids || []);
-    setCompName(c.name);
-  };
-
-  const handleDeleteComposition = async (id: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/compositions/${id}`, { method: "DELETE" });
-      if (res.ok) loadData();
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Saved Compositions Bar */}
-      {compositions.length > 0 && (
-        <div className="glass-panel" style={{ padding: '16px' }}>
-          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: '12px' }}>
-            Saved Actor Profiles:
-          </span>
-          <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '8px' }}>
-            {compositions.map(c => (
-              <span key={c.id} className="tag-chip accent" style={{ cursor: 'pointer', padding: '4px 10px' }} onClick={() => loadSavedComposition(c)}>
-                🔗 {c.name}
-                <span className="remove-btn" style={{ marginLeft: '6px' }} onClick={(e) => { e.stopPropagation(); if (c.id) handleDeleteComposition(c.id); }}>✕</span>
-              </span>
-            ))}
+    <div className="split-view" style={{ gridTemplateColumns: '400px 1fr' }}>
+      {/* Matrix Ingredient Selection Column */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        
+        {/* Saved Profiles List */}
+        {compositions.length > 0 && (
+          <div className="glass-panel" style={{ padding: '12px 16px' }}>
+            <h3 style={{ fontSize: '13px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px' }}>
+              Saved Composition Profiles ({compositions.length})
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {compositions.map(c => (
+                <div 
+                  key={c.id} 
+                  className="tag-chip accent" 
+                  style={{ justifyContent: 'space-between', padding: '6px 10px', borderRadius: '6px' }}
+                >
+                  <span style={{ fontWeight: 600 }}>{c.name}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="composer-view">
-        {/* Step 1: Base Actor */}
-        <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span className="badge active">Step 1</span>
-            <h3 style={{ fontSize: '16px' }}>Select Base Actor (WHO)</h3>
-          </div>
-          <div className="entity-card-list">
+        {/* Step 1: Base Persona */}
+        <div className="glass-panel">
+          <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-color)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '6px' }}>
+            1. Select Base Persona (WHO)
+          </label>
+          <select value={selectedActorId} onChange={e => setSelectedActorId(e.target.value)} style={{ width: '100%' }}>
+            <option value="">Select Persona...</option>
             {actors.map(a => (
-              <div 
-                key={a.id} 
-                className={`entity-card ${a.id === selectedActorId ? 'selected' : ''}`}
-                onClick={() => setSelectedActorId(a.id)}
-              >
-                <span className="entity-card-title">🎭 {a.name}</span>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{a.title}</span>
-              </div>
+              <option key={a.id} value={a.id}>{a.name} ({a.title || 'Persona'})</option>
             ))}
-          </div>
+          </select>
+          {selectedActor && (
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '8px' }}>
+              {selectedActor.description}
+            </p>
+          )}
         </div>
 
-        {/* Step 2: Specializations & Skills */}
-        <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', maxHeight: 'calc(100vh - 200px)' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <span className="badge active">Step 2</span>
-              <h3 style={{ fontSize: '16px' }}>Platform Specializations</h3>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {specs.map(s => {
-                const isSelected = selectedSpecIds.includes(s.id);
-                return (
-                  <div 
-                    key={s.id} 
-                    className={`list-item-badge ${isSelected ? 'selected' : ''}`}
-                    style={{ cursor: 'pointer', borderColor: isSelected ? 'var(--accent-color)' : 'var(--border-color)', background: isSelected ? 'rgba(107, 124, 255, 0.1)' : 'var(--bg-tertiary)' }}
-                    onClick={() => toggleSpec(s.id)}
-                  >
-                    <span>🔧 {s.name}</span>
-                    <span>{isSelected ? "✅" : "+"}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <span className="badge active">Step 3</span>
-              <h3 style={{ fontSize: '16px' }}>Executable Capability / Skill</h3>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {skills.map(sk => {
-                const isSelected = selectedSkillIds.includes(sk.id);
-                return (
-                  <div 
-                    key={sk.id} 
-                    className={`list-item-badge ${isSelected ? 'selected' : ''}`}
-                    style={{ cursor: 'pointer', borderColor: isSelected ? 'var(--accent-color)' : 'var(--border-color)', background: isSelected ? 'rgba(107, 124, 255, 0.1)' : 'var(--bg-tertiary)' }}
-                    onClick={() => toggleSkill(sk.id)}
-                  >
-                    <span>⚡ {sk.name}</span>
-                    <span>{isSelected ? "✅" : "+"}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        {/* Step 2: Specialization */}
+        <div className="glass-panel">
+          <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-color)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '6px' }}>
+            2. Select Specialization (WITH WHAT EXPERTISE)
+          </label>
+          <select value={selectedSpecId} onChange={e => setSelectedSpecId(e.target.value)} style={{ width: '100%' }}>
+            <option value="">Select Specialization...</option>
+            {specializations.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          {selectedSpec && (
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '8px' }}>
+              {selectedSpec.description}
+            </p>
+          )}
         </div>
 
-        {/* Step 3: Live System Prompt Preview */}
-        <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ fontSize: '16px' }}>Compiled System Prompt Preview</h3>
-            {previewLoading && <span className="badge warning">Compiling...</span>}
-          </div>
+        {/* Step 3: Skill */}
+        <div className="glass-panel">
+          <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-color)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '6px' }}>
+            3. Select Executable Skill (WHAT)
+          </label>
+          <select value={selectedSkillId} onChange={e => setSelectedSkillId(e.target.value)} style={{ width: '100%' }}>
+            <option value="">Select Skill...</option>
+            {skills.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          {selectedSkill && (
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '8px' }}>
+              {selectedSkill.description}
+            </p>
+          )}
+        </div>
 
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>Profile Name</label>
-            <input 
-              type="text" 
-              placeholder="e.g. AWS SRE + Mermaid Skill" 
-              value={compName} 
-              onChange={e => setCompName(e.target.value)} 
-            />
-          </div>
+        {/* Save Profile Form */}
+        <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <label style={{ fontSize: '13px', fontWeight: 600 }}>Save Composition Profile</label>
+          <input 
+            type="text" 
+            value={compName} 
+            onChange={e => setCompName(e.target.value)}
+            placeholder="Composition Profile Name..."
+          />
+          <button className="btn-primary" onClick={handleSaveComposition}>
+            Save Profile to Catalog
+          </button>
+        </div>
+      </div>
 
-          <div className="prompt-preview-box" style={{ flex: 1 }}>
-            {compiledPrompt || "// Select an Actor persona to preview compiled prompt..."}
+      {/* Right Real-time Prompt Compilation Canvas */}
+      <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div>
+            <h2 style={{ fontSize: '18px' }}>Compiled System Prompt Preamble</h2>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+              Real-time 3D Matrix compilation (Persona × Specialization × Skill)
+            </p>
           </div>
-
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button className="btn-secondary" style={{ flex: 1 }} onClick={handleSaveComposition} disabled={!selectedActorId || !compName.trim()}>
-              {saveSuccess ? "✓ Profile Saved!" : "Save Profile"}
+          {onSelectForTesting && selectedActor && (
+            <button 
+              className="btn-primary" 
+              onClick={() => onSelectForTesting({
+                name: compName,
+                actor_id: selectedActorId,
+                skill_ids: selectedSkillId ? [selectedSkillId] : [],
+                specialization_ids: selectedSpecId ? [selectedSpecId] : []
+              }, compiledPrompt)}
+            >
+              🧪 Load into Test Bench
             </button>
-            {onSelectForTesting && (
-              <button className="btn-primary" style={{ flex: 1 }} onClick={() => onSelectForTesting({ name: compName, actor_id: selectedActorId, skill_ids: selectedSkillIds, specialization_ids: selectedSpecIds }, compiledPrompt)}>
-                Test in Bench →
-              </button>
-            )}
-          </div>
+          )}
+        </div>
+
+        <div className="prompt-preview-box" style={{ flex: 1 }}>
+          {isPreviewing ? (
+            <span style={{ color: 'var(--text-muted)' }}>Compiling system prompt preamble...</span>
+          ) : compiledPrompt ? (
+            compiledPrompt
+          ) : (
+            <span style={{ color: 'var(--text-muted)' }}>Select ingredients on the left to compile system prompt.</span>
+          )}
         </div>
       </div>
     </div>

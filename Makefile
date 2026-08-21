@@ -7,7 +7,7 @@ help:
 	@echo "Available targets:"
 	@echo "  help           Show this help message"
 	@echo "  setup          Set up Python environment with uv"
-	@echo "  dev-up         Start local development servers in background"
+	@echo "  dev-up         Start local development servers bound to 0.0.0.0 in background"
 	@echo "  dev-down       Stop local development servers"
 	@echo "  dev-restart    Restart development servers cleanly"
 	@echo "  dev-status     Check health of local servers"
@@ -35,15 +35,15 @@ dev-up: _check-setup
 	if curl -sf http://localhost:8000/health > /dev/null 2>&1; then \
 		echo "⚡ FastAPI already running on :8000, skipping..."; \
 	else \
-		echo "Starting FastAPI server in background..."; \
-		nohup uv run uvicorn src.actor_factory.main:app --reload > fastapi.log 2>&1 & echo $$! > fastapi.pid; \
+		echo "Starting FastAPI server on 0.0.0.0:8000 in background..."; \
+		nohup uv run uvicorn src.actor_factory.main:app --host 0.0.0.0 --port 8000 --reload > fastapi.log 2>&1 & echo $$! > fastapi.pid; \
 		STARTED=1; \
 	fi; \
 	if curl -sf http://localhost:3000 > /dev/null 2>&1; then \
 		echo "⚡ Next.js already running on :3000, skipping..."; \
 	else \
-		echo "Starting Next.js frontend in background..."; \
-		cd frontend && nohup npm run dev > ../nextjs.log 2>&1 & echo $$! > nextjs.pid; \
+		echo "Starting Next.js frontend on 0.0.0.0:3000 in background..."; \
+		cd frontend && nohup npm run dev -- -H 0.0.0.0 -p 3000 > ../nextjs.log 2>&1 & echo $$! > nextjs.pid; \
 		STARTED=1; \
 	fi; \
 	if [ $$STARTED -eq 1 ]; then \

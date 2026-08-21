@@ -1,316 +1,320 @@
 "use client";
 import { useState, useEffect } from 'react';
+import { getApiBaseUrl } from '../utils/api';
 
-export interface AuditEntry {
-  id: string;
+export interface AuditLogEntry {
   timestamp: string;
-  duration_ms: number;
-  git: { sha: string; branch: string };
-  call_type: string;
   call_id: string;
-  domain_context: any;
-  prompt_construction: {
-    template_used: string;
-    modifiers: {
-      persona?: string;
-      persona_title?: string;
-      specializations?: string[];
-      skill?: string;
-      preamble_char_count?: number;
-    };
+  call_type: string;
+  git: {
+    sha: string;
+    branch: string;
   };
   llm: {
     provider: string;
     model: string;
+    system_prompt_length: number;
     system_prompt: string;
     user_prompt: string;
+    temperature: number;
     response: string;
-    tokens?: { prompt: number; completion: number; total: number };
+    duration_ms: number;
   };
+  modifiers: {
+    persona: string;
+    persona_title: string;
+    specializations: string[];
+    skill: string;
+    preamble_char_count: number;
+  };
+  domain_context: any;
 }
 
-const API_BASE = "http://localhost:8000/api/v1";
-
 export default function AuditLogManager() {
-  const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [config, setConfig] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
-  // Filter State
-  const todayStr = new Date().toISOString().split('T')[0];
-  const [startDate, setStartDate] = useState(todayStr);
-  const [endDate, setEndDate] = useState(todayStr);
-  const [callType, setCallType] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [limit, setLimit] = useState(25);
+  // Filter & Search State
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [callTypeFilter, setCallTypeFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [limit, setLimit] = useState(50);
+  const [showConfigDrawer, setShowConfigDrawer] = useState(false);
 
-  // Logging Controls Config State
-  const [showControls, setShowControls] = useState(false);
-  const [loggingConfig, setLoggingConfig] = useState<{ enabled: boolean; disabled_call_types: string[]; known_call_types: string[] }>({
-    enabled: true,
-    disabled_call_types: [],
-    known_call_types: [
-      "design_ecommerce_solution",
-      "testbench_execution",
-      "analyze_requirements",
-      "generate_stories",
-      "build_mermaid_diagram"
-    ]
-  });
-
-  const loadLogs = async () => {
+  const fetchLogs = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (startDate) params.append("start_date", startDate);
-      if (endDate) params.append("end_date", endDate);
-      if (callType && callType !== "all") params.append("call_type", callType);
-      if (searchQuery) params.append("search_query", searchQuery);
-      params.append("limit", limit.toString());
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+      if (callTypeFilter) params.append('call_type', callTypeFilter);
+      if (searchQuery) params.append('query', searchQuery);
+      params.append('limit', limit.toString());
 
-      const res = await fetch(`${API_BASE}/llm/audit-logs/search?${params.toString()}`);
+      const res = await fetch(`${getApiBaseUrl()}/llm/audit-logs/search?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setEntries(data);
+        setLogs(data.entries || []);
       }
     } catch (e) {
-      console.error(e);
+      console.error("Failed to fetch audit logs", e);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadConfig = async () => {
+  const fetchConfig = async () => {
     try {
-      const res = await fetch(`${API_BASE}/llm/audit-logs/config`);
+      const res = await fetch(`${getApiBaseUrl()}/llm/audit-logs/config`);
       if (res.ok) {
         const data = await res.json();
-        setLoggingConfig(data);
+        setConfig(data.logging_enabled || {});
       }
     } catch (e) {
-      console.error(e);
+      console.error("Failed to fetch audit log config", e);
+    }
+  };
+
+  const handleToggleConfig = async (key: string, enabled: boolean) => {
+    const newConfig = { ...config, [key]: enabled };
+    setConfig(newConfig);
+    try {
+      await fetch(`${getApiBaseUrl()}/llm/audit-logs/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logging_enabled: newConfig })
+      });
+    } catch (e) {
+      console.error("Failed to update audit log config", e);
     }
   };
 
   useEffect(() => {
-    loadConfig();
-    loadLogs();
+    fetchLogs();
+    fetchConfig();
   }, []);
 
-  const handleToggleCallType = async (type: string) => {
-    const disabled = loggingConfig.disabled_call_types.includes(type)
-      ? loggingConfig.disabled_call_types.filter(t => t !== type)
-      : [...loggingConfig.disabled_call_types, type];
-
-    const updatedConfig = { ...loggingConfig, disabled_call_types: disabled };
-    setLoggingConfig(updatedConfig);
-
-    try {
-      await fetch(`${API_BASE}/llm/audit-logs/config`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedConfig)
-      });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '1400px', margin: '0 auto' }}>
-      
-      {/* Top Banner & Logging Controls Toggle */}
-      <div className="glass-panel" style={{ padding: '20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* Top Filter Bar */}
+      <div className="glass-panel" style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div>
-            <h2 style={{ fontSize: '20px', marginBottom: '4px' }}>📋 Prompt Engineering Audit Log</h2>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-              Captures every LLM goal execution with full composition context: selected persona, specializations detected, skills applied, complete prompts sent, and raw model responses.
-            </p>
+            <label style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+              Start Date
+            </label>
+            <input 
+              type="date" 
+              value={startDate} 
+              onChange={e => setStartDate(e.target.value)} 
+              style={{ width: '130px', padding: '4px 8px', fontSize: '12px' }}
+            />
           </div>
-          <button className="btn-secondary" onClick={() => setShowControls(!showControls)}>
-            ⚙️ Logging Controls {showControls ? "▲" : "▼"}
+
+          <div>
+            <label style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+              End Date
+            </label>
+            <input 
+              type="date" 
+              value={endDate} 
+              onChange={e => setEndDate(e.target.value)} 
+              style={{ width: '130px', padding: '4px 8px', fontSize: '12px' }}
+            />
+          </div>
+
+          <div>
+            <label style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+              LLM Goal / Call Type
+            </label>
+            <select 
+              value={callTypeFilter} 
+              onChange={e => setCallTypeFilter(e.target.value)} 
+              style={{ width: '180px', padding: '4px 8px', fontSize: '12px' }}
+            >
+              <option value="">All Call Types...</option>
+              {Object.keys(config).map(ct => (
+                <option key={ct} value={ct}>{ct}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+              Search Prompt / Response
+            </label>
+            <input 
+              type="text" 
+              placeholder="Search keyword..." 
+              value={searchQuery} 
+              onChange={e => setSearchQuery(e.target.value)} 
+              style={{ width: '180px', padding: '4px 8px', fontSize: '12px' }}
+              onKeyDown={e => e.key === 'Enter' && fetchLogs()}
+            />
+          </div>
+
+          <div>
+            <label style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+              Limit
+            </label>
+            <select 
+              value={limit} 
+              onChange={e => setLimit(Number(e.target.value))} 
+              style={{ width: '80px', padding: '4px 8px', fontSize: '12px' }}
+            >
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+
+          <button 
+            className="btn-primary" 
+            style={{ padding: '6px 14px', marginTop: '16px', fontSize: '12px' }}
+            onClick={fetchLogs}
+            disabled={loading}
+          >
+            {loading ? 'Searching...' : '🔍 Search Logs'}
           </button>
         </div>
 
-        {/* Collapsible Logging Controls Panel */}
-        {showControls && (
-          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '10px' }}>
-              Toggle Call Types to Record
-            </span>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
-              {loggingConfig.known_call_types.map(t => {
-                const isEnabled = !loggingConfig.disabled_call_types.includes(t);
-                return (
-                  <label key={t} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: isEnabled ? 'var(--success)' : 'var(--text-muted)' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={isEnabled} 
-                      onChange={() => handleToggleCallType(t)} 
-                    />
-                    <span>{t}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Filter Bar */}
-      <div className="glass-panel" style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'end', padding: '16px' }}>
-        <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '150px' }}>
-          <label>Start Date</label>
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-        </div>
-
-        <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '150px' }}>
-          <label>End Date</label>
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-        </div>
-
-        <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '180px' }}>
-          <label>Goal / Call Type</label>
-          <select value={callType} onChange={e => setCallType(e.target.value)}>
-            <option value="all">All Call Types</option>
-            {loggingConfig.known_call_types.map(t => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="form-group" style={{ marginBottom: 0, flex: 2, minWidth: '220px' }}>
-          <label>Search Query</label>
-          <input 
-            type="text" 
-            placeholder="Search prompts, responses, personas..." 
-            value={searchQuery} 
-            onChange={e => setSearchQuery(e.target.value)} 
-          />
-        </div>
-
-        <div className="form-group" style={{ marginBottom: 0, width: '100px' }}>
-          <label>Limit</label>
-          <select value={limit} onChange={e => setLimit(Number(e.target.value))}>
-            <option value={10}>10</option>
-            <option value={25}>25</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
-          </select>
-        </div>
-
-        <button className="btn-primary" style={{ padding: '10px 20px', height: '42px' }} onClick={loadLogs} disabled={loading}>
-          {loading ? "Searching..." : "🔍 Search Logs"}
+        <button 
+          className="btn-secondary" 
+          style={{ padding: '6px 12px', fontSize: '12px' }}
+          onClick={() => setShowConfigDrawer(!showConfigDrawer)}
+        >
+          ⚙️ Logging Controls ({Object.keys(config).length})
         </button>
       </div>
 
-      {/* Log Entries List */}
+      {/* Logging Controls Drawer */}
+      {showConfigDrawer && (
+        <div className="glass-panel" style={{ padding: '12px 16px' }}>
+          <h3 style={{ fontSize: '14px', marginBottom: '8px' }}>Call-Type Logging Controls</h3>
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+            Toggle recording for specific LLM call types. Disabling a call type stops appending entries to daily log archives.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
+            {Object.entries(config).map(([key, isEnabled]) => (
+              <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
+                <input 
+                  type="checkbox" 
+                  checked={isEnabled} 
+                  onChange={e => handleToggleConfig(key, e.target.checked)} 
+                />
+                <span style={{ fontFamily: 'Geist Mono, monospace' }}>{key}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Audit Log Entries List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {entries.length === 0 ? (
+        {logs.length === 0 ? (
           <div className="glass-panel empty-state">
             <span className="empty-state-icon">📋</span>
-            <p>No audit log entries found for the selected date range and filters.</p>
+            <p>No audit log entries found matching your query.</p>
           </div>
         ) : (
-          entries.map(entry => {
-            const isExpanded = expandedId === entry.id;
-            const mods = entry.prompt_construction?.modifiers || {};
-            const tokens = entry.llm?.tokens;
-
+          logs.map((entry, idx) => {
+            const isExpanded = expandedIndex === idx;
             return (
-              <div 
-                key={entry.id} 
-                className="glass-panel" 
-                style={{ 
-                  background: 'var(--bg-secondary)', 
-                  padding: '16px 20px',
-                  borderColor: isExpanded ? 'var(--accent-color)' : 'var(--border-color)',
-                  cursor: 'pointer'
-                }}
-                onClick={() => setExpandedId(isExpanded ? null : entry.id)}
-              >
-                {/* Header Card Summary */}
+              <div key={idx} className="glass-panel" style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <span className="badge active" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span className="badge active" style={{ textTransform: 'none', fontFamily: 'Geist Mono, monospace' }}>
                       {entry.call_type}
                     </span>
-                    <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                      🎭 {mods.persona_title || mods.persona || "Unknown Persona"}
-                    </span>
-                    {mods.skill && (
-                      <span className="tag-chip accent">⚡ {mods.skill}</span>
-                    )}
+                    <span style={{ fontSize: '12px', fontWeight: 600 }}>{entry.modifiers?.persona}</span>
+                    <span className="tag-chip">{entry.modifiers?.skill}</span>
+                    {entry.modifiers?.specializations?.map((s, i) => (
+                      <span key={i} className="tag-chip accent">{s}</span>
+                    ))}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span className="badge success">
-                      {entry.llm?.provider}/{entry.llm?.model}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      {new Date(entry.timestamp).toLocaleString()}
                     </span>
-                    {tokens?.total && (
-                      <span className="badge">{tokens.total} tokens</span>
-                    )}
-                    <span className="badge">{entry.duration_ms} ms</span>
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                      {new Date(entry.timestamp).toLocaleTimeString()}
-                    </span>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '14px' }}>{isExpanded ? "▲" : "▼"}</span>
+                    <span className="badge">{entry.llm?.duration_ms}ms</span>
+                    <span className="badge success">{entry.llm?.model}</span>
+                    <button 
+                      className="btn-secondary" 
+                      style={{ padding: '2px 8px', fontSize: '11px' }}
+                      onClick={() => setExpandedIndex(isExpanded ? null : idx)}
+                    >
+                      {isExpanded ? 'Collapse ▲' : 'Inspect ▼'}
+                    </button>
                   </div>
                 </div>
 
-                {/* Expanded Details Drawer */}
+                {/* Compact View */}
+                {!isExpanded && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '12px', marginTop: '4px' }}>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+                      <strong>User Prompt:</strong> {entry.llm?.user_prompt}
+                    </div>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+                      <strong>Response:</strong> {entry.llm?.response}
+                    </div>
+                  </div>
+                )}
+
+                {/* Expanded Detailed View */}
                 {isExpanded && (
-                  <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '16px' }} onClick={e => e.stopPropagation()}>
-                    
-                    {/* Composition Modifiers Summary */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', background: 'var(--bg-tertiary)', padding: '12px 16px', borderRadius: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--glass-border)' }}>
+                    {/* Metadata Header */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', fontSize: '11px', background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '6px' }}>
                       <div>
-                        <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Specializations Detected:</span>
-                        <div className="tag-container" style={{ marginTop: '4px' }}>
-                          {(mods.specializations || []).length > 0 
-                            ? mods.specializations?.map(s => <span key={s} className="tag-chip accent">{s}</span>)
-                            : <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>None</span>
-                          }
-                        </div>
+                        <span style={{ color: 'var(--text-muted)', display: 'block' }}>GIT COMMIT SHA</span>
+                        <code style={{ fontSize: '11px' }}>{entry.git?.sha || 'local'} ({entry.git?.branch || 'main'})</code>
                       </div>
-
                       <div>
-                        <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Git SHA & Metadata:</span>
-                        <div style={{ fontSize: '12px', marginTop: '4px', color: 'var(--text-primary)' }}>
-                          Git: <code>{entry.git?.sha}</code> ({entry.git?.branch}) | Preamble length: {mods.preamble_char_count || 0} chars
-                        </div>
+                        <span style={{ color: 'var(--text-muted)', display: 'block' }}>PROVIDER & MODEL</span>
+                        <span>{entry.llm?.provider} / {entry.llm?.model}</span>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-muted)', display: 'block' }}>PREAMBLE LENGTH</span>
+                        <span>{entry.modifiers?.preamble_char_count} chars</span>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-muted)', display: 'block' }}>TEMPERATURE</span>
+                        <span>{entry.llm?.temperature}</span>
                       </div>
                     </div>
 
-                    {/* System Prompt */}
+                    {/* Compiled System Prompt */}
                     <div>
-                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>
-                        Compiled System Prompt
+                      <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--accent-color)', textTransform: 'uppercase' }}>
+                        1. Compiled System Prompt Preamble
                       </label>
-                      <div className="prompt-preview-box" style={{ maxHeight: '200px' }}>
+                      <pre className="prompt-preview-box" style={{ maxHeight: '180px', fontSize: '11px', marginTop: '4px' }}>
                         {entry.llm?.system_prompt}
-                      </div>
+                      </pre>
                     </div>
 
-                    {/* User Prompt (LLM Goal) */}
+                    {/* User Prompt */}
                     <div>
-                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>
-                        User Prompt / Raw LLM Goal
+                      <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--accent-color)', textTransform: 'uppercase' }}>
+                        2. User Input Payload
                       </label>
-                      <div className="prompt-preview-box" style={{ maxHeight: '160px' }}>
+                      <pre className="prompt-preview-box" style={{ maxHeight: '140px', fontSize: '11px', marginTop: '4px' }}>
                         {entry.llm?.user_prompt}
-                      </div>
+                      </pre>
                     </div>
 
                     {/* LLM Response */}
                     <div>
-                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>
-                        LLM Model Response
+                      <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--success)', textTransform: 'uppercase' }}>
+                        3. Recorded LLM Response
                       </label>
-                      <div className="prompt-preview-box" style={{ maxHeight: '300px' }}>
+                      <pre className="prompt-preview-box" style={{ maxHeight: '240px', fontSize: '11px', marginTop: '4px' }}>
                         {entry.llm?.response}
-                      </div>
+                      </pre>
                     </div>
                   </div>
                 )}

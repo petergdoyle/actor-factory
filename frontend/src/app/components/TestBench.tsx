@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from 'react';
 import { Composition } from './Composer';
+import { getApiBaseUrl } from '../utils/api';
 
 export interface LLMOption {
   id: string;
@@ -62,8 +63,6 @@ const SAMPLE_RUBRICS = [
 4. Documentation & Schema (25%): Clear OpenAPI contracts or JSDoc/docstrings.`
   }
 ];
-
-const API_BASE = "http://localhost:8000/api/v1";
 
 export default function TestBench({ activeComposition, initialPrompt }: { activeComposition?: Composition | null, initialPrompt?: string }) {
   const [modelId, setModelId] = useState('ollama:gemma4:12b');
@@ -130,13 +129,14 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
   useEffect(() => {
     const loadCatalogData = async () => {
       try {
+        const apiBase = getApiBaseUrl();
         const [domRes, actRes, sklRes, spcRes, cmpRes, cfgRes] = await Promise.all([
-          fetch(`${API_BASE}/domains`),
-          fetch(`${API_BASE}/actors`),
-          fetch(`${API_BASE}/skills`),
-          fetch(`${API_BASE}/specializations`),
-          fetch(`${API_BASE}/compositions`),
-          fetch(`${API_BASE}/llm/configs`)
+          fetch(`${apiBase}/domains`),
+          fetch(`${apiBase}/actors`),
+          fetch(`${apiBase}/skills`),
+          fetch(`${apiBase}/specializations`),
+          fetch(`${apiBase}/compositions`),
+          fetch(`${apiBase}/llm/configs`)
         ]);
 
         if (domRes.ok) setDomains(await domRes.json());
@@ -353,7 +353,7 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
     };
 
     try {
-      const res = await fetch(`${API_BASE}/orchestrate`, {
+      const res = await fetch(`${getApiBaseUrl()}/orchestrate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)

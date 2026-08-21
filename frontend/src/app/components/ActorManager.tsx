@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from 'react';
+import { getApiBaseUrl } from '../utils/api';
 
 export interface Actor {
   id?: string;
@@ -17,8 +18,6 @@ export interface Domain {
   id: string;
   name: string;
 }
-
-const API_BASE = "http://localhost:8000/api/v1";
 
 export default function ActorManager() {
   const [actors, setActors] = useState<Actor[]>([]);
@@ -46,8 +45,8 @@ export default function ActorManager() {
   const loadData = async () => {
     try {
       const [actorRes, domainRes] = await Promise.all([
-        fetch(`${API_BASE}/actors`),
-        fetch(`${API_BASE}/domains`)
+        fetch(`${getApiBaseUrl()}/actors`),
+        fetch(`${getApiBaseUrl()}/domains`)
       ]);
       if (actorRes.ok) {
         const actorData = await actorRes.json();
@@ -109,7 +108,7 @@ export default function ActorManager() {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/actors`, {
+      const res = await fetch(`${getApiBaseUrl()}/actors`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -127,7 +126,7 @@ export default function ActorManager() {
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this Actor Persona?")) return;
     try {
-      const res = await fetch(`${API_BASE}/actors/${id}`, { method: "DELETE" });
+      const res = await fetch(`${getApiBaseUrl()}/actors/${id}`, { method: "DELETE" });
       if (res.ok) {
         await loadData();
         handleNew();

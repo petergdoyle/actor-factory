@@ -89,6 +89,7 @@ All core architectural designs, specification catalogs, and research documents a
 
 - 🏛️ **[System Architecture](file:///Users/peterdoyle/Dev/actor-factory/docs/architecture.md)** — Core topology, 3D composition matrix, data models, validation spectrum, LLM configurations, prompt audit log engine, and API routes.
 - 🌱 **[Seed Engine & Factory Reset Pattern](file:///Users/peterdoyle/Dev/actor-factory/docs/seed-engine.md)** — Architectural design and implementation guide for idempotent seeding and database resets.
+- 📚 **[Built-in Seed Catalog](file:///Users/peterdoyle/Dev/actor-factory/docs/seeds.md)** — Complete reference inventory of all default Problem Domains, Actor Personas, Skills, Specializations, Team Compositions, and LLM Providers.
 - 📐 **[AI Engineering Documentation](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/)**:
   - 🗺️ **[AI Strategy & Blueprint](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/ai-strategy.md)** — Multi-tiered AI application architecture blueprint.
   - 🧩 **[Persona × Skill Composition](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/persona-skill-composition.md)** — Building validatable AI expertise & feedback chains.

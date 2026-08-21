@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from 'react';
+import { getApiBaseUrl } from '../utils/api';
 
 export interface Specialization {
   id?: string;
@@ -11,8 +12,6 @@ export interface Specialization {
   detection_keywords: string[];
 }
 
-const API_BASE = "http://localhost:8000/api/v1";
-
 export default function SpecializationManager() {
   const [specs, setSpecs] = useState<Specialization[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -21,9 +20,8 @@ export default function SpecializationManager() {
   // Form State
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [servicesPatterns, setServicesPatterns] = useState("");
+  const [services, setServices] = useState("");
 
-  // Lists
   const [constraints, setConstraints] = useState<string[]>([]);
   const [newConstraint, setNewConstraint] = useState("");
 
@@ -35,7 +33,7 @@ export default function SpecializationManager() {
 
   const loadSpecs = async () => {
     try {
-      const res = await fetch(`${API_BASE}/specializations`);
+      const res = await fetch(`${getApiBaseUrl()}/specializations`);
       if (res.ok) {
         const data = await res.json();
         setSpecs(data);
@@ -56,7 +54,7 @@ export default function SpecializationManager() {
     setSelectedId(s.id || null);
     setName(s.name);
     setDescription(s.description || "");
-    setServicesPatterns(s.services_and_patterns || "");
+    setServices(s.services_and_patterns || "");
     setConstraints(s.constraints || []);
     setExamples(s.examples || []);
     setKeywords(s.detection_keywords || []);
@@ -66,25 +64,27 @@ export default function SpecializationManager() {
     setSelectedId(null);
     setName("");
     setDescription("");
-    setServicesPatterns("");
+    setServices("");
     setConstraints([]);
     setExamples([]);
     setKeywords([]);
   };
 
   const handleSave = async () => {
+    if (!name.trim()) return alert("Specialization name is required.");
+
     const payload: Specialization = {
       id: selectedId || undefined,
       name,
       description,
-      services_and_patterns: servicesPatterns,
+      services_and_patterns: services,
       constraints,
       examples,
       detection_keywords: keywords,
     };
 
     try {
-      const res = await fetch(`${API_BASE}/specializations`, {
+      const res = await fetch(`${getApiBaseUrl()}/specializations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -102,7 +102,7 @@ export default function SpecializationManager() {
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this Specialization?")) return;
     try {
-      const res = await fetch(`${API_BASE}/specializations/${id}`, { method: "DELETE" });
+      const res = await fetch(`${getApiBaseUrl()}/specializations/${id}`, { method: "DELETE" });
       if (res.ok) {
         await loadSpecs();
         handleNew();
@@ -122,21 +122,9 @@ export default function SpecializationManager() {
     setList(list.filter((_, i) => i !== index));
   };
 
-  const addKeywordTag = () => {
-    if (!newKeyword.trim()) return;
-    const parts = newKeyword.split(',').map(p => p.trim()).filter(Boolean);
-    const updated = Array.from(new Set([...keywords, ...parts]));
-    setKeywords(updated);
-    setNewKeyword("");
-  };
-
-  const removeKeywordTag = (kw: string) => {
-    setKeywords(keywords.filter(k => k !== kw));
-  };
-
   const filtered = specs.filter(s => 
     s.name.toLowerCase().includes(search.toLowerCase()) || 
-    s.description.toLowerCase().includes(search.toLowerCase())
+    (s.description && s.description.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -150,21 +138,18 @@ export default function SpecializationManager() {
           </button>
         </div>
 
-        <div className="search-box">
-          <span className="search-icon">🔍</span>
-          <input 
-            type="text" 
-            placeholder="Filter specializations..." 
-            value={search} 
-            onChange={e => setSearch(e.target.value)} 
-          />
-        </div>
+        <input 
+          type="text" 
+          placeholder="Filter specializations..." 
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
 
         <div className="entity-card-list">
           {filtered.length === 0 ? (
             <div className="empty-state">
               <span className="empty-state-icon">🔧</span>
-              <p>No specializations found.</p>
+              <p>No specializations defined yet.</p>
             </div>
           ) : (
             filtered.map(s => (
@@ -175,16 +160,13 @@ export default function SpecializationManager() {
               >
                 <div className="entity-card-header">
                   <span className="entity-card-title">{s.name}</span>
-                  <span className="badge">Platform</span>
+                  <span className="badge active">Expertise</span>
                 </div>
                 <p className="entity-card-desc">{s.description || "No description."}</p>
                 <div className="tag-container">
-                  {s.detection_keywords.slice(0, 4).map((kw, i) => (
-                    <span key={i} className="tag-chip accent">{kw}</span>
+                  {s.detection_keywords.slice(0, 3).map((k, i) => (
+                    <span key={i} className="tag-chip">{k}</span>
                   ))}
-                  {s.detection_keywords.length > 4 && (
-                    <span className="tag-chip">+{s.detection_keywords.length - 4}</span>
-                  )}
                 </div>
               </div>
             ))
@@ -195,7 +177,7 @@ export default function SpecializationManager() {
       {/* Right Editor Form */}
       <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', maxHeight: 'calc(100vh - 140px)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '20px' }}>{selectedId ? "Edit Specialization" : "Create New Specialization"}</h2>
+          <h2 style={{ fontSize: '20px' }}>{selectedId ? "Edit Specialization" : "Create Platform / Domain Expertise"}</h2>
           {selectedId && (
             <button className="btn-danger" onClick={() => handleDelete(selectedId)}>
               Delete
@@ -207,99 +189,109 @@ export default function SpecializationManager() {
           <label>Specialization Name</label>
           <input 
             type="text" 
-            placeholder="e.g. Amazon Web Services (AWS), Kubernetes, Serverless" 
             value={name} 
             onChange={e => setName(e.target.value)} 
+            placeholder="e.g. Amazon Web Services (AWS), Kubernetes & Cloud Native, STEM Assessments" 
           />
         </div>
 
         <div className="form-group">
           <label>Description</label>
           <textarea 
-            placeholder="Platform or vendor expertise details..." 
             value={description} 
             onChange={e => setDescription(e.target.value)} 
+            placeholder="Scope of technical or domain expertise..." 
+            style={{ minHeight: '60px' }}
           />
         </div>
 
         <div className="form-group">
-          <label>Services & Key Architecture Patterns</label>
+          <label>Services & Core Patterns (Comma-separated or list)</label>
           <input 
             type="text" 
-            placeholder="e.g. Lambda, ECS, S3, DynamoDB, EventBridge, IAM" 
-            value={servicesPatterns} 
-            onChange={e => setServicesPatterns(e.target.value)} 
+            value={services} 
+            onChange={e => setServices(e.target.value)} 
+            placeholder="e.g. Lambda, ECS/Fargate, DynamoDB, Step Functions, SQS/SNS" 
           />
         </div>
 
-        {/* Detection Keywords Tags */}
+        {/* Constraints */}
         <div className="form-group">
-          <label>Auto-Detection Keywords (Comma Separated)</label>
-          <div className="list-input-row">
+          <label>Platform Constraints & Guidelines</label>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
             <input 
               type="text" 
-              placeholder="e.g. aws, lambda, ecs, fargate, s3" 
-              value={newKeyword} 
-              onChange={e => setNewKeyword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addKeywordTag())}
+              placeholder="Add constraint (e.g. Reference specific AWS service names, check numerical setup step-by-step)..." 
+              value={newConstraint}
+              onChange={e => setNewConstraint(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addItem(constraints, setConstraints, newConstraint, setNewConstraint)}
             />
-            <button className="btn-secondary" onClick={addKeywordTag}>Add Tag(s)</button>
+            <button className="btn-secondary" style={{ padding: '0 16px' }} onClick={() => addItem(constraints, setConstraints, newConstraint, setNewConstraint)}>
+              Add
+            </button>
           </div>
-          <div className="tag-container" style={{ marginTop: '8px' }}>
-            {keywords.map((kw) => (
-              <span key={kw} className="tag-chip accent">
-                {kw}
-                <span className="remove-btn" onClick={() => removeKeywordTag(kw)}>✕</span>
+          <div className="tag-container">
+            {constraints.map((c, i) => (
+              <span key={i} className="tag-chip accent">
+                {c}
+                <button className="tag-chip-remove" onClick={() => removeItem(constraints, setConstraints, i)}>×</button>
               </span>
             ))}
           </div>
         </div>
 
-        {/* Constraints */}
-        <div className="form-group">
-          <label>Platform Constraints & Rules</label>
-          <div className="list-input-row">
-            <input 
-              type="text" 
-              placeholder="Add constraint (e.g. Reference specific AWS service names, not generic equivalents)" 
-              value={newConstraint} 
-              onChange={e => setNewConstraint(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addItem(constraints, setConstraints, newConstraint, setNewConstraint))}
-            />
-            <button className="btn-secondary" onClick={() => addItem(constraints, setConstraints, newConstraint, setNewConstraint)}>Add</button>
-          </div>
-          {constraints.map((c, i) => (
-            <div key={i} className="list-item-badge">
-              <span>🛑 {c}</span>
-              <span className="delete-icon" onClick={() => removeItem(constraints, setConstraints, i)}>✕</span>
-            </div>
-          ))}
-        </div>
-
         {/* Examples */}
         <div className="form-group">
           <label>Usage Examples</label>
-          <div className="list-input-row">
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
             <input 
               type="text" 
-              placeholder="Add example (e.g. Use SQS for decoupling instead of generic queue)" 
-              value={newExample} 
+              placeholder="Add usage example..." 
+              value={newExample}
               onChange={e => setNewExample(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addItem(examples, setExamples, newExample, setNewExample))}
+              onKeyDown={e => e.key === 'Enter' && addItem(examples, setExamples, newExample, setNewExample)}
             />
-            <button className="btn-secondary" onClick={() => addItem(examples, setExamples, newExample, setNewExample)}>Add</button>
+            <button className="btn-secondary" style={{ padding: '0 16px' }} onClick={() => addItem(examples, setExamples, newExample, setNewExample)}>
+              Add
+            </button>
           </div>
-          {examples.map((ex, i) => (
-            <div key={i} className="list-item-badge">
-              <span>💡 {ex}</span>
-              <span className="delete-icon" onClick={() => removeItem(examples, setExamples, i)}>✕</span>
-            </div>
-          ))}
+          <div className="tag-container">
+            {examples.map((ex, i) => (
+              <span key={i} className="tag-chip accent">
+                {ex}
+                <button className="tag-chip-remove" onClick={() => removeItem(examples, setExamples, i)}>×</button>
+              </span>
+            ))}
+          </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
-          <button className="btn-secondary" onClick={handleNew}>Cancel</button>
-          <button className="btn-primary" onClick={handleSave} disabled={!name.trim()}>
+        {/* Detection Keywords */}
+        <div className="form-group">
+          <label>Auto-Detection Keywords</label>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+            <input 
+              type="text" 
+              placeholder="Add detection keyword (e.g. aws, lambda, stem, rubric)..." 
+              value={newKeyword}
+              onChange={e => setNewKeyword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addItem(keywords, setKeywords, newKeyword, setNewKeyword)}
+            />
+            <button className="btn-secondary" style={{ padding: '0 16px' }} onClick={() => addItem(keywords, setKeywords, newKeyword, setNewKeyword)}>
+              Add
+            </button>
+          </div>
+          <div className="tag-container">
+            {keywords.map((kw, i) => (
+              <span key={i} className="tag-chip">
+                {kw}
+                <button className="tag-chip-remove" onClick={() => removeItem(keywords, setKeywords, i)}>×</button>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+          <button className="btn-primary" onClick={handleSave}>
             Save Specialization
           </button>
         </div>
