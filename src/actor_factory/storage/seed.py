@@ -156,7 +156,20 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
         }
     )
 
-    for d in [domain_se, domain_ops, domain_po, domain_sec, domain_edu]:
+    domain_ea = Domain(
+        id=existing_domains.get("Enterprise Architecture", uuid4()),
+        name="Enterprise Architecture",
+        description="Enterprise-wide systems strategy, integration patterns, technology governance, and business-IT alignment across organizational boundaries.",
+        parameters={
+            "framework": "TOGAF / Zachman",
+            "integration_style": "Event-Driven / ESB / API-Led Connectivity",
+            "governance_model": "Architecture Review Board (ARB)",
+            "modeling_notation": "ArchiMate / UML / BPMN",
+            "portfolio_management": "Application Rationalization / Technology Radar"
+        }
+    )
+
+    for d in [domain_se, domain_ops, domain_po, domain_sec, domain_edu, domain_ea]:
         storage.save_domain(d)
 
     # 2. ACTORS (PERSONAS)
@@ -292,7 +305,37 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
         ]
     )
 
-    for a in [actor_swe, actor_sre, actor_po, actor_sec, actor_ta]:
+    actor_ea = Actor(
+        id=existing_actors.get("Enterprise Architect", uuid4()),
+        name="Enterprise Architect",
+        title="Enterprise Architect / Chief Architect",
+        description="Designs and governs the enterprise technology landscape, ensuring alignment between business strategy and IT capabilities through integration patterns, standards, and roadmaps.",
+        domain_id=domain_ea.id,
+        core_concerns=[
+            "Business-IT alignment and capability mapping",
+            "Application portfolio rationalization",
+            "Enterprise integration patterns and data flow",
+            "Technology standards and governance",
+            "Migration and modernization roadmaps"
+        ],
+        vocabulary="capability map, application portfolio, integration bus, canonical data model, bounded context, technology radar, reference architecture, transition architecture, target state, as-is/to-be, ArchiMate, TOGAF ADM, interoperability, data lineage, API gateway, event mesh",
+        thinking_patterns=[
+            "Map business capabilities before selecting technology solutions",
+            "Assess current state (as-is) before designing target state (to-be)",
+            "Evaluate integration complexity and coupling across system boundaries",
+            "Balance standardization with team autonomy using governance guardrails",
+            "Consider total cost of ownership across the full application lifecycle"
+        ],
+        quality_criteria=[
+            "Clear traceability from business capability to technology component",
+            "Explicit integration contracts between bounded contexts",
+            "Defined transition states with measurable migration milestones",
+            "Technology choices justified against governance principles",
+            "Minimized redundancy across the application portfolio"
+        ]
+    )
+
+    for a in [actor_swe, actor_sre, actor_po, actor_sec, actor_ta, actor_ea]:
         storage.save_actor(a)
 
     # 3. SKILLS
@@ -412,7 +455,85 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
         ]
     )
 
-    for sk in [skill_mermaid, skill_story, skill_api, skill_rubric_grading, skill_gap_analysis]:
+    skill_eai = Skill(
+        id=existing_skills.get("Enterprise Application Integration", uuid4()),
+        name="Enterprise Application Integration",
+        description="Design integration solutions connecting disparate enterprise systems using messaging, APIs, and event-driven patterns.",
+        output_format="Integration architecture document with pattern selection, data mapping, and sequence diagrams",
+        validation_level="structural",
+        validation_rules=[
+            "Must identify source and target systems with their data contracts",
+            "Must specify integration pattern (pub/sub, request/reply, file transfer, shared DB)",
+            "Must define error handling and retry/dead-letter strategy",
+            "Must address data transformation and canonical model mapping"
+        ],
+        quality_patterns=[
+            "Loose coupling between integrated systems",
+            "Idempotent message consumers for reliability",
+            "Clear data ownership and system-of-record designation",
+            "Versioned contracts for backward compatibility"
+        ],
+        anti_patterns=[
+            "Point-to-point spaghetti integrations without a backbone",
+            "Shared mutable database as integration mechanism",
+            "Synchronous calls across trust boundaries without circuit breakers",
+            "Unversioned or undocumented data contracts"
+        ]
+    )
+
+    skill_adr = Skill(
+        id=existing_skills.get("Architecture Decision Records", uuid4()),
+        name="Architecture Decision Records",
+        description="Document architectural decisions with context, constraints, options considered, and rationale in a structured ADR format.",
+        output_format="Markdown ADR: Title, Status, Context, Decision, Consequences, Alternatives Considered",
+        validation_level="structural",
+        validation_rules=[
+            "Must include context describing the forces at play",
+            "Must list at least two alternatives considered with trade-offs",
+            "Must state the decision clearly and unambiguously",
+            "Must articulate both positive and negative consequences"
+        ],
+        quality_patterns=[
+            "Context grounded in concrete business or technical constraints",
+            "Trade-off analysis with quantifiable criteria where possible",
+            "Consequences tied to specific quality attributes (performance, maintainability, cost)",
+            "Cross-references to related ADRs or governance principles"
+        ],
+        anti_patterns=[
+            "Vague context that does not constrain the decision space",
+            "Missing alternatives — presenting only the chosen option",
+            "Consequences that only list benefits without risks",
+            "Decisions that cannot be revisited or have no expiry trigger"
+        ]
+    )
+
+    skill_roadmap = Skill(
+        id=existing_skills.get("Technology Roadmap Planning", uuid4()),
+        name="Technology Roadmap Planning",
+        description="Produce phased technology roadmaps that align platform modernization with business priorities and organizational capacity.",
+        output_format="Roadmap document with phases, milestones, dependencies, and risk assessment",
+        validation_level="structural",
+        validation_rules=[
+            "Must define clear phases with time horizons (Now / Next / Later or quarterly)",
+            "Must identify dependencies between initiatives",
+            "Must map each initiative to a business capability or strategic objective",
+            "Must include risk/complexity assessment per initiative"
+        ],
+        quality_patterns=[
+            "Incremental value delivery — no big-bang migrations",
+            "Explicit decision gates between phases",
+            "Capacity and skills assessment for each phase",
+            "Measurable success criteria for phase completion"
+        ],
+        anti_patterns=[
+            "Roadmaps disconnected from business strategy",
+            "Multi-year plans with no intermediate checkpoints",
+            "Technology-first thinking without capability mapping",
+            "Missing dependency analysis leading to blocked initiatives"
+        ]
+    )
+
+    for sk in [skill_mermaid, skill_story, skill_api, skill_rubric_grading, skill_gap_analysis, skill_eai, skill_adr, skill_roadmap]:
         storage.save_skill(sk)
 
     # 4. SPECIALIZATIONS
@@ -499,7 +620,102 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
         detection_keywords=["essay", "book report", "humanities", "english", "history", "social studies", "art", "writing", "literature", "thesis", "rubric", "persuasive"]
     )
 
-    for sp in [spec_aws, spec_k8s, spec_agile, spec_stem, spec_humanities]:
+    spec_sap = Specialization(
+        id=existing_specs.get("SAP ERP & S/4HANA", uuid4()),
+        name="SAP ERP & S/4HANA",
+        description="SAP enterprise resource planning platform expertise — modules, integration points, and migration patterns from ECC to S/4HANA.",
+        services_and_patterns="SAP S/4HANA, SAP ECC, ABAP, SAP Fiori, SAP BTP (Business Technology Platform), RFC/BAPI, IDoc, OData, SAP Integration Suite, CDS Views",
+        constraints=[
+            "Reference specific SAP module names (FI, CO, MM, SD, PP, HCM)",
+            "Consider SAP clean core principles for S/4HANA extensions",
+            "Account for SAP release cycles and upgrade compatibility",
+            "Distinguish between on-premise, private cloud, and public cloud editions"
+        ],
+        examples=[
+            "Use SAP Integration Suite for middleware instead of custom PI/PO flows",
+            "Leverage CDS views for analytical reporting instead of classic ABAP reports",
+            "Design Fiori apps following SAP UX guidelines for launchpad integration"
+        ],
+        detection_keywords=["sap", "s4hana", "abap", "fiori", "bapi", "idoc", "btp", "hana"]
+    )
+
+    spec_salesforce = Specialization(
+        id=existing_specs.get("Salesforce Platform", uuid4()),
+        name="Salesforce Platform",
+        description="Salesforce CRM and platform expertise — Sales Cloud, Service Cloud, custom development, and integration patterns.",
+        services_and_patterns="Sales Cloud, Service Cloud, Marketing Cloud, Experience Cloud, Apex, Lightning Web Components, Salesforce Flow, Platform Events, Change Data Capture, MuleSoft, Salesforce Connect",
+        constraints=[
+            "Respect Salesforce governor limits (SOQL queries, DML operations, CPU time)",
+            "Design for multi-tenant shared infrastructure constraints",
+            "Follow Salesforce Well-Architected Framework principles",
+            "Consider ISV packaging vs. unmanaged customization trade-offs"
+        ],
+        examples=[
+            "Use Platform Events for async integration instead of outbound messages",
+            "Implement Change Data Capture for near-real-time data replication",
+            "Design Apex triggers with bulkification patterns for governor limit compliance"
+        ],
+        detection_keywords=["salesforce", "apex", "soql", "lightning", "lwc", "sfdc", "sales cloud", "service cloud"]
+    )
+
+    spec_mulesoft = Specialization(
+        id=existing_specs.get("MuleSoft & API-Led Connectivity", uuid4()),
+        name="MuleSoft & API-Led Connectivity",
+        description="MuleSoft Anypoint Platform expertise — API-led connectivity, DataWeave transformations, and enterprise integration network design.",
+        services_and_patterns="Anypoint Platform, Mule Runtime, CloudHub, Runtime Fabric, API Manager, Exchange, DataWeave, RAML/OAS, Experience API, Process API, System API, Anypoint MQ",
+        constraints=[
+            "Follow three-layer API-led connectivity pattern (System, Process, Experience)",
+            "Design APIs as reusable assets discoverable via Anypoint Exchange",
+            "Account for CloudHub worker sizing and vCore allocation",
+            "Use DataWeave for all data transformations — avoid Java when possible"
+        ],
+        examples=[
+            "Expose SAP BAPI as a System API with OData-to-REST transformation",
+            "Orchestrate multi-system workflows in a Process API layer",
+            "Implement circuit breaker and retry policies in API Manager"
+        ],
+        detection_keywords=["mulesoft", "anypoint", "dataweave", "raml", "cloudhub", "mule", "api-led"]
+    )
+
+    spec_servicenow = Specialization(
+        id=existing_specs.get("ServiceNow Platform", uuid4()),
+        name="ServiceNow Platform",
+        description="ServiceNow ITSM, ITOM, and platform development expertise — workflows, integrations, and enterprise service management.",
+        services_and_patterns="ITSM, ITOM, ITBM, CMDB, Flow Designer, IntegrationHub, Service Portal, App Engine Studio, Scripted REST APIs, ATF, Update Sets, Scoped Applications",
+        constraints=[
+            "Follow ServiceNow best practices for scoped application development",
+            "Design integrations through IntegrationHub rather than custom MID server scripts",
+            "Maintain CMDB data quality with discovery and reconciliation rules",
+            "Consider upgrade compatibility — avoid modifying out-of-box objects directly"
+        ],
+        examples=[
+            "Use Flow Designer for no-code workflow orchestration instead of legacy workflows",
+            "Implement CMDB-driven service mapping for impact analysis",
+            "Design Scripted REST APIs for bi-directional integration with external ITSM tools"
+        ],
+        detection_keywords=["servicenow", "itsm", "itom", "cmdb", "snow", "flow designer", "integrationhub"]
+    )
+
+    spec_oracle = Specialization(
+        id=existing_specs.get("Oracle ERP Cloud & Fusion", uuid4()),
+        name="Oracle ERP Cloud & Fusion",
+        description="Oracle Cloud ERP and Fusion Applications expertise — financials, procurement, supply chain, and integration via Oracle Integration Cloud.",
+        services_and_patterns="Oracle ERP Cloud, Oracle Fusion, Oracle Integration Cloud (OIC), VBCS, Oracle APEX, BI Publisher, OTBI, FBDI, REST/SOAP APIs, Oracle SOA Suite, PaaS Extension",
+        constraints=[
+            "Prefer Oracle Integration Cloud (OIC) for SaaS-to-SaaS connectivity",
+            "Use FBDI for bulk data imports rather than custom interfaces",
+            "Follow Oracle extension framework patterns — avoid kernel modifications",
+            "Design reports using OTBI for real-time or BI Publisher for pixel-perfect output"
+        ],
+        examples=[
+            "Implement OIC recipes for Workday-to-Oracle HCM data sync",
+            "Use FBDI templates for high-volume journal import during migration",
+            "Design VBCS extensions for custom Fusion UI requirements"
+        ],
+        detection_keywords=["oracle", "fusion", "oic", "erp cloud", "fbdi", "otbi", "oracle integration"]
+    )
+
+    for sp in [spec_aws, spec_k8s, spec_agile, spec_stem, spec_humanities, spec_sap, spec_salesforce, spec_mulesoft, spec_servicenow, spec_oracle]:
         storage.save_specialization(sp)
 
     # 5. INITIAL COMPOSITION
