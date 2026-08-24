@@ -131,6 +131,18 @@ export default function Composer({ onSelectForTesting }: { onSelectForTesting?: 
     }
   };
 
+  const handleDeleteComposition = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this Composition?")) return;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/compositions/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        await loadData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   return (
     <div className="split-view" style={{ gridTemplateColumns: '400px 1fr' }}>
       {/* Matrix Ingredient Selection Column */}
@@ -150,6 +162,12 @@ export default function Composer({ onSelectForTesting }: { onSelectForTesting?: 
                   style={{ justifyContent: 'space-between', padding: '6px 10px', borderRadius: '6px' }}
                 >
                   <span style={{ fontWeight: 600 }}>{c.name}</span>
+                  <span 
+                    className="remove-btn" 
+                    style={{ cursor: 'pointer', fontSize: '14px', color: 'var(--text-muted)' }}
+                    title="Delete composition"
+                    onClick={() => handleDeleteComposition(c.id!)}
+                  >✕</span>
                 </div>
               ))}
             </div>

@@ -12,23 +12,42 @@ ActorFactory is not a single application; it is the universal intelligence engin
 
 ```mermaid
 flowchart TD
-    %% Nodes
+    %% Core Engine
     Core["ActorFactory<br/><b>(Universal Core Engine)</b>"]
-    
-    Edu["ClassPilot<br/><b>(K-12 Education)</b>"]
-    Story["StoryForge AI<br/><b>(Project Mgmt)</b>"]
-    Log["LogisticsOS<br/><b>(Online Order)</b>"]
+
+    %% Pilot Groups
+    CP["ClassPilot<br/><b>(Classroom AI)</b>"]
+    DP["DoTSPilot<br/><b>(Digital Transformation)</b>"]
+    RP["RaaDPilot<br/><b>(Research & Development)</b>"]
+
+    %% Downstream Applications
+    RL["RubricLens<br/><b>(K-12 Education)</b>"]
+    SF["StoryForge<br/><b>(Project Management)</b>"]
+    SolF["SolutionForge<br/><b>(Solution Builder)</b>"]
+    MLMF["MLMF<br/><b>(ML Model Factory)</b>"]
+    SRMR["SRMR<br/><b>(ML Model Repository)</b>"]
 
     %% Relationships
-    Core --> Edu
-    Core --> Story
-    Core --> Log
+    Core --> CP
+    Core --> DP
+    Core --> RP
+
+    CP --> RL
+    DP --> SF
+    DP --> SolF
+    RP --> MLMF
+    RP --> SRMR
 
     %% Styling
     style Core fill:#2d3748,stroke:#4a5568,stroke-width:2px,color:#fff
-    style Edu fill:#edf2f7,stroke:#cbd5e0,stroke-width:1px,color:#2d3748
-    style Story fill:#edf2f7,stroke:#cbd5e0,stroke-width:1px,color:#2d3748
-    style Log fill:#edf2f7,stroke:#cbd5e0,stroke-width:1px,color:#2d3748
+    style CP fill:#4a5568,stroke:#718096,stroke-width:2px,color:#fff
+    style DP fill:#4a5568,stroke:#718096,stroke-width:2px,color:#fff
+    style RP fill:#4a5568,stroke:#718096,stroke-width:2px,color:#fff
+    style RL fill:#edf2f7,stroke:#cbd5e0,stroke-width:1px,color:#2d3748
+    style SF fill:#edf2f7,stroke:#cbd5e0,stroke-width:1px,color:#2d3748
+    style SolF fill:#edf2f7,stroke:#cbd5e0,stroke-width:1px,color:#2d3748
+    style MLMF fill:#edf2f7,stroke:#cbd5e0,stroke-width:1px,color:#2d3748
+    style SRMR fill:#edf2f7,stroke:#cbd5e0,stroke-width:1px,color:#2d3748
 ```
 
 ---
