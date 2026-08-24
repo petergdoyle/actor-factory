@@ -15,7 +15,7 @@ flowchart TD
     %% Nodes
     Core["ActorFactory<br/><b>(Universal Core Engine)</b>"]
     
-    Edu["EduGrade AI<br/><b>(K-12 Education)</b>"]
+    Edu["RubricLens<br/><b>(K-12 Education)</b>"]
     Story["StoryForge AI<br/><b>(Project Mgmt)</b>"]
     Log["LogisticsOS<br/><b>(Online Order)</b>"]
 
