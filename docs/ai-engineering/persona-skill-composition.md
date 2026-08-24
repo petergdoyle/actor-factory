@@ -41,12 +41,18 @@ Each domain represents a professional archetype with generalized knowledge:
 
 Each persona can be narrowed with platform/vendor/methodology skills:
 
-```
-Solution Architect (general)
-├── AWS Solution Architect (adds: VPC, Lambda, ECS, CloudFormation patterns)
-├── Azure Solution Architect (adds: VNET, Functions, AKS, ARM/Bicep patterns)
-├── GCP Solution Architect (adds: VPC, Cloud Run, GKE, Terraform patterns)
-└── On-Prem Solution Architect (adds: VMware, bare metal, rack design)
+```mermaid
+flowchart TD
+    SA["Solution Architect (general)"]
+    AWS_SA["AWS Solution Architect<br/>(adds: VPC, Lambda, ECS, CloudFormation patterns)"]
+    AZ_SA["Azure Solution Architect<br/>(adds: VNET, Functions, AKS, ARM/Bicep patterns)"]
+    GCP_SA["GCP Solution Architect<br/>(adds: VPC, Cloud Run, GKE, Terraform patterns)"]
+    OP_SA["On-Prem Solution Architect<br/>(adds: VMware, bare metal, rack design)"]
+
+    SA --> AWS_SA
+    SA --> AZ_SA
+    SA --> GCP_SA
+    SA --> OP_SA
 ```
 
 This is the "As a [Role]..." pattern from user stories applied to AI prompting:
@@ -229,28 +235,38 @@ class DiagramArchitectureValidator:
 
 ## The Feedback Loop Architecture
 
-```
-┌──────────────────────────────────────────────────┐
-│  Persona Context (Domain + Specialization)        │
-│  "AWS Solution Architect"                         │
-├──────────────────────────────────────────────────┤
-│  Skill Execution (Capability)                     │
-│  "Generate Mermaid diagram for auth flow"         │
-├──────────────────────────────────────────────────┤
-│  Output                                           │
-│  Raw mermaid code                                 │
-├──────────────────────────────────────────────────┤
-│  Validation Layer                                 │
-│  ┌─────────────┐ ┌──────────────┐ ┌───────────┐ │
-│  │ Syntax      │ │ Structural   │ │ Semantic  │ │
-│  │ (parser)    │ │ (schema)     │ │ (LLM/     │ │
-│  │ PASS/FAIL   │ │ PASS/WARN    │ │  heuristic│ │
-│  └─────────────┘ └──────────────┘ └───────────┘ │
-├──────────────────────────────────────────────────┤
-│  Auto-Retry (if syntax fails)                     │
-│  Suggestion (if structural warnings)              │
-│  Human Review (if semantic concerns)              │
-└──────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Context["Persona Context (Domain + Specialization)"]
+        CTX["AWS Solution Architect"]
+    end
+
+    subgraph Execution["Skill Execution (Capability)"]
+        TASK["Generate Mermaid diagram for auth flow"]
+    end
+
+    subgraph Output["Output"]
+        RAW["Raw mermaid code"]
+    end
+
+    subgraph Validation["Validation Layer"]
+        SYN["Syntax<br/>(parser)<br/>PASS/FAIL"]
+        STR["Structural<br/>(schema)<br/>PASS/WARN"]
+        SEM["Semantic<br/>(LLM/heuristic)"]
+    end
+
+    subgraph Action["Resolution"]
+        RETRY["Auto-Retry<br/>(if syntax fails)"]
+        SUGGEST["Suggestion<br/>(if structural warnings)"]
+        HUMAN["Human Review<br/>(if semantic concerns)"]
+    end
+
+    Context --> Execution
+    Execution --> Output
+    Output --> Validation
+    SYN --> RETRY
+    STR --> SUGGEST
+    SEM --> HUMAN
 ```
 
 For **Category 1** skills (mermaid, terraform, SQL): the loop is fully automated. Retry until valid.
@@ -407,20 +423,20 @@ Each phase is independently deployable and testable.
 
 ### Architecture: Integration Flow
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ API Endpoint (e.g., analyze-diagrams)                           │
-├─────────────────────────────────────────────────────────────────┤
-│ 1. Load project context (domains, solution_parameters)          │
-│ 2. Auto-detect specializations from solution_parameters         │
-│ 3. Compose preamble: persona(domain) × skill × specializations │
-│ 4. Build system prompt: preamble + existing template            │
-│ 5. Build user prompt: requirements + solution params            │
-│ 6. Call LLM provider                                            │
-│ 7. Log to audit: full prompt + composition metadata             │
-│ 8. Parse/validate response                                      │
-│ 9. Return result                                                │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A["API Endpoint (e.g., analyze-diagrams)"]
+    B["Load project context<br/>(domains, solution_parameters)"]
+    C["Auto-detect specializations<br/>from solution_parameters"]
+    D["Compose preamble:<br/>persona(domain) × skill × specializations"]
+    E["Build system prompt:<br/>preamble + existing template"]
+    F["Build user prompt:<br/>requirements + solution params"]
+    G["Call LLM provider"]
+    H["Log to audit:<br/>full prompt + composition metadata"]
+    I["Parse/validate response"]
+    J["Return result"]
+
+    A --> B --> C --> D --> E --> F --> G --> H --> I --> J
 ```
 
 ### File Layout

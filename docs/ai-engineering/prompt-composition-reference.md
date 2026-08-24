@@ -119,26 +119,16 @@ Associations are non-enforced suggestions that guide admins and the UI toward se
 
 ## How Composition Works at Runtime
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  1. Caller provides: domains, skill, solution_parameters_text   │
-│     e.g., ["software_engineering"], "mermaid_diagram", "AWS..." │
-├─────────────────────────────────────────────────────────────────┤
-│  2. Auto-detect specializations from text                       │
-│     "AWS Lambda, DynamoDB" → aws (0.91), serverless (0.65)      │
-├─────────────────────────────────────────────────────────────────┤
-│  3. Load persona, skill, specializations from YAML              │
-│     Validated on load (invalid templates skipped with log)      │
-├─────────────────────────────────────────────────────────────────┤
-│  4. Compose preamble: persona + specializations + skill         │
-│     ~1500-2500 chars of focused, structured context             │
-├─────────────────────────────────────────────────────────────────┤
-│  5. Prepend preamble to existing task-specific system prompt    │
-│     General context (who, what platform) → Specific task rules  │
-├─────────────────────────────────────────────────────────────────┤
-│  6. Log composition metadata in audit trail                     │
-│     persona, specializations, skill, source, char_count         │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A["1. Caller provides: domains, skill, solution_parameters_text"]
+    B["2. Auto-detect specializations from text<br/>'AWS Lambda, DynamoDB' → aws (0.91), serverless (0.65)"]
+    C["3. Load persona, skill, specializations from YAML<br/>Validated on load (invalid templates skipped with log)"]
+    D["4. Compose preamble: persona + specializations + skill<br/>~1500-2500 chars of focused, structured context"]
+    E["5. Prepend preamble to existing task-specific system prompt<br/>General context (who, what platform) → Specific task rules"]
+    F["6. Log composition metadata in audit trail<br/>persona, specializations, skill, source, char_count"]
+
+    A --> B --> C --> D --> E --> F
 ```
 
 ---
