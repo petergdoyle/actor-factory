@@ -8,9 +8,10 @@ import Composer, { Composition } from './components/Composer';
 import TestBench from './components/TestBench';
 import LLMConfigManager from './components/LLMConfigManager';
 import AuditLogManager from './components/AuditLogManager';
+import SettingsManager, { getStoredTheme, applyTheme } from './components/SettingsManager';
 import { getApiBaseUrl } from './utils/api';
 
-type Tab = 'domains' | 'actors' | 'skills' | 'specializations' | 'composer' | 'testbench' | 'llm_configs' | 'audit_logs';
+type Tab = 'domains' | 'actors' | 'skills' | 'specializations' | 'composer' | 'testbench' | 'llm_configs' | 'audit_logs' | 'settings';
 
 interface StackHealth {
   api_status: 'online' | 'offline';
@@ -58,6 +59,11 @@ export default function Home() {
     checkHealth();
     const interval = setInterval(checkHealth, 5000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Apply stored theme on mount
+  useEffect(() => {
+    applyTheme(getStoredTheme());
   }, []);
 
   const handleSelectForTesting = (comp: Composition, prompt: string) => {
@@ -138,6 +144,12 @@ export default function Home() {
           >
             📋 Audit Log
           </button>
+          <button 
+            className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            🎨 Settings
+          </button>
         </nav>
 
         {/* Stack Status & Action Controls */}
@@ -178,6 +190,7 @@ export default function Home() {
         {activeTab === 'testbench' && <TestBench activeComposition={activeComposition} initialPrompt={initialPrompt} />}
         {activeTab === 'llm_configs' && <LLMConfigManager onConfigChanged={checkHealth} />}
         {activeTab === 'audit_logs' && <AuditLogManager />}
+        {activeTab === 'settings' && <SettingsManager />}
       </main>
     </div>
   );
