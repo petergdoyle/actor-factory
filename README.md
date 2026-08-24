@@ -10,17 +10,25 @@ Traditional enterprise software struggles to extract deterministic, reliable out
 
 ActorFactory is not a single application; it is the universal intelligence engine that sits underneath specific use cases. Downstream applications consume ActorFactory via a decoupled, LLM-blind backend API:
 
-```
-                  ┌──────────────────────────────┐
-                  │         ActorFactory         │ (Universal Core Engine)
-                  └──────────────┬───────────────┘
-                                 │
-         ┌───────────────────────┼───────────────────────┐
-         ▼                       ▼                       ▼
-┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
-│  EduGrade AI     │   │   StoryForge AI  │   │   LogisticsOS    │ (Downstream Apps)
-│ (K-12 Education) │   │ (Project Mgmt)   │   │ (Online Order)   │
-└──────────────────┘   └──────────────────┘   └──────────────────┘
+```mermaid
+flowchart TD
+    %% Nodes
+    Core["ActorFactory<br/><b>(Universal Core Engine)</b>"]
+    
+    Edu["EduGrade AI<br/><b>(K-12 Education)</b>"]
+    Story["StoryForge AI<br/><b>(Project Mgmt)</b>"]
+    Log["LogisticsOS<br/><b>(Online Order)</b>"]
+
+    %% Relationships
+    Core --> Edu
+    Core --> Story
+    Core --> Log
+
+    %% Styling
+    style Core fill:#2d3748,stroke:#4a5568,stroke-width:2px,color:#fff
+    style Edu fill:#edf2f7,stroke:#cbd5e0,stroke-width:1px,color:#2d3748
+    style Story fill:#edf2f7,stroke:#cbd5e0,stroke-width:1px,color:#2d3748
+    style Log fill:#edf2f7,stroke:#cbd5e0,stroke-width:1px,color:#2d3748
 ```
 
 ---
