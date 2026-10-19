@@ -122,6 +122,17 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
   const [viewMode, setViewMode] = useState<'raw' | 'rendered'>('rendered');
   const [hasRun, setHasRun] = useState(false);
 
+  // Inline prompt visibility: the exact composed prompt this composition would
+  // send to the LLM (compiled server-side, no model call). The full
+  // request/response exchange lives in the Audit Log, not here.
+  interface ComposedPrompt {
+    systemPrompt: string;
+    userPrompt: string;
+  }
+  const [composedPrompt, setComposedPrompt] = useState<ComposedPrompt | null>(null);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [promptLoading, setPromptLoading] = useState(false);
+
   const outputRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -389,38 +400,24 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
     URL.revokeObjectURL(url);
   };
 
-  const handleGenerate = async () => {
-    if (!rawRequirements.trim()) return;
-    
-    setIsStreaming(true);
-    setHasRun(true);
-    setRunError(null);
-    setOutput('');
-    setDuration(0);
-    const startTime = Date.now();
-    
-    const interval = setInterval(() => {
-      setDuration(Date.now() - startTime);
-    }, 100);
-
+  // Build the orchestrate payload from the current form state. Shared by the
+  // run (/orchestrate) and the prompt preview (/compose/prompt) so both use the
+  // identical composition. Returns null if the domain params JSON is invalid.
+  const buildOrchestratePayload = () => {
     let parsedParams = {};
     try {
       parsedParams = JSON.parse(domainParams);
-    } catch (e) {
-      setOutput('Error parsing Domain Parameters JSON');
-      setIsStreaming(false);
-      clearInterval(interval);
-      return;
+    } catch {
+      return null;
     }
-
-    const payload = {
+    return {
       model_id: modelId,
       temperature: 0.2,
       call_type: callType,
       request: {
         domain_context: {
           domain_name: domainName,
-          parameters: parsedParams
+          parameters: parsedParams,
         },
         raw_user_input: rawRequirements,
         supplemental_reference: supplementalRef,
@@ -432,26 +429,52 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
               id: "00000000-0000-0000-0000-000000000001",
               name: personaName,
               ingredient_type: "Persona",
-              core_logic_instruction: personaDesc
+              core_logic_instruction: personaDesc,
             },
             specializations: [
               {
                 id: selectedSpecId || "00000000-0000-0000-0000-000000000002",
                 name: specName,
                 ingredient_type: "Specialization",
-                core_logic_instruction: specDesc
-              }
+                core_logic_instruction: specDesc,
+              },
             ],
             skill: {
               id: selectedSkillId || "00000000-0000-0000-0000-000000000003",
               name: skillName,
               ingredient_type: "Skill",
-              core_logic_instruction: skillDesc
-            }
-          }
-        ]
-      }
+              core_logic_instruction: skillDesc,
+            },
+          },
+        ],
+      },
     };
+  };
+
+  const handleGenerate = async () => {
+    if (!rawRequirements.trim()) return;
+    
+    setIsStreaming(true);
+    setHasRun(true);
+    setRunError(null);
+    setOutput('');
+    setDuration(0);
+    // A fresh run invalidates any previously-shown prompt preview.
+    setComposedPrompt(null);
+    setShowPrompt(false);
+    const startTime = Date.now();
+    
+    const interval = setInterval(() => {
+      setDuration(Date.now() - startTime);
+    }, 100);
+
+    const payload = buildOrchestratePayload();
+    if (!payload) {
+      setOutput('Error parsing Domain Parameters JSON');
+      setIsStreaming(false);
+      clearInterval(interval);
+      return;
+    }
 
     try {
       const res = await fetch(`${getApiBaseUrl()}/orchestrate`, {
@@ -514,6 +537,43 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
       }
     } catch {
       // Non-fatal: keep the raw streamed output if repair is unavailable.
+    }
+  };
+
+  // Compile the exact prompt this composition would send — without running the
+  // model. Toggles the inline prompt panel. The full request/response exchange
+  // is in the Audit Log; this is prompt-only, on demand.
+  const togglePrompt = async () => {
+    if (showPrompt) {
+      setShowPrompt(false);
+      return;
+    }
+    setShowPrompt(true);
+    setPromptLoading(true);
+    try {
+      const payload = buildOrchestratePayload();
+      if (!payload) {
+        setComposedPrompt(null);
+        return;
+      }
+      const res = await fetch(`${getApiBaseUrl()}/compose/prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setComposedPrompt({
+          systemPrompt: data.system_prompt ?? '',
+          userPrompt: data.user_prompt ?? '',
+        });
+      } else {
+        setComposedPrompt(null);
+      }
+    } catch {
+      setComposedPrompt(null);
+    } finally {
+      setPromptLoading(false);
     }
   };
 
@@ -847,6 +907,16 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
                 type="button"
                 className="btn-secondary"
                 style={{ padding: '4px 10px', fontSize: '12px' }}
+                onClick={togglePrompt}
+                disabled={isStreaming}
+                title="Show the exact composed prompt this composition would send to the LLM (the full request/response is in the Audit Log)"
+              >
+                {showPrompt ? '🔎 Hide prompt' : '🔎 View prompt'}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ padding: '4px 10px', fontSize: '12px' }}
                 onClick={downloadMarkdown}
                 disabled={isStreaming || !hasRun || !output.trim()}
                 title="Download output as a .md file"
@@ -858,6 +928,38 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
               </span>
             </div>
           </div>
+
+          {/* Inline prompt visibility — the exact composed prompt this
+              composition would send. Prompt-only; the full request/response
+              exchange is in the Audit Log. */}
+          {showPrompt && (
+            <div className="glass-panel" style={{ padding: '12px 16px', marginBottom: '10px', display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(0,0,0,0.2)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                <strong style={{ color: 'var(--accent-color)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Composed prompt</strong>
+                <span style={{ marginLeft: 'auto' }}>the full request &amp; response are in the Audit Log</span>
+              </div>
+              {promptLoading ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                  <span className="spinner" aria-hidden="true" /> Compiling prompt…
+                </div>
+              ) : composedPrompt ? (
+                <>
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--accent-color)', textTransform: 'uppercase' }}>System Prompt</label>
+                    <pre className="prompt-preview-box" style={{ maxHeight: '220px', fontSize: '11px', marginTop: '4px', whiteSpace: 'pre-wrap' }}>{composedPrompt.systemPrompt}</pre>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--accent-color)', textTransform: 'uppercase' }}>User Prompt</label>
+                    <pre className="prompt-preview-box" style={{ maxHeight: '180px', fontSize: '11px', marginTop: '4px', whiteSpace: 'pre-wrap' }}>{composedPrompt.userPrompt}</pre>
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  Could not compile the prompt. Check the Domain Parameters JSON is valid.
+                </div>
+              )}
+            </div>
+          )}
           {/* Error banner — prominent, never silent. */}
           {runError && (
             <div

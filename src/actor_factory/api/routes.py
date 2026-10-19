@@ -601,7 +601,9 @@ MERMAID SYNTAX RULES (follow exactly to produce diagrams that render):
 - Every edge must use a complete arrow: --> (solid) or -.-> (dotted).
   Never write --|label| or -.|label|. Correct forms: -->|label| and -.->|label|.
 - Every 'subgraph' must have a matching 'end'.
-- Do not reference style/linkStyle ids that are not defined.
+- Emit STRUCTURE ONLY — no custom styling. Do not output classDef, style, or
+  linkStyle directives, ':::' class applications, or hard-coded colors/fills.
+  The renderer's theme owns all appearance.
 - Output the diagram inside a single ```mermaid fenced code block.
 """.strip()
 
@@ -615,6 +617,32 @@ def _involves_mermaid(actor, payload: "OrchestratePayload") -> bool:
         haystacks.append(getattr(skill, "core_logic_instruction", "") or "")
     haystacks.append(payload.call_type or "")
     return any("mermaid" in h.lower() for h in haystacks)
+
+
+def _compile_prompts(payload: "OrchestratePayload") -> Dict[str, str]:
+    """Compile the system + user prompts for a payload — the single source of
+    truth used by both /orchestrate (to run) and /compose/prompt (to preview),
+    so the previewed prompt is byte-identical to what gets sent to the LLM."""
+    actor = payload.request.target_actors[0]
+    system_prompt = actor.compile_actor_system_prompt()
+    if _involves_mermaid(actor, payload):
+        system_prompt = f"{system_prompt}\n{MERMAID_SYNTAX_GUIDANCE}"
+    user_prompt = ContextualAssembler.compile_user_prompt(
+        context=payload.request.domain_context,
+        raw_input=payload.request.raw_user_input,
+        supplemental_reference=payload.request.supplemental_reference,
+    )
+    return {"system_prompt": system_prompt, "user_prompt": user_prompt}
+
+
+@router.post("/compose/prompt")
+def compose_prompt(payload: OrchestratePayload):
+    """Compile the exact prompt a composition would send — WITHOUT running the
+    LLM. Powers the Test Bench's inline "view the generated prompt" panel. The
+    full request/response exchange lives in the audit log, not here."""
+    if not payload.request.target_actors:
+        raise HTTPException(status_code=400, detail="Must provide at least one target actor")
+    return _compile_prompts(payload)
 
 
 @router.post("/orchestrate")
@@ -635,24 +663,14 @@ def orchestrate(payload: OrchestratePayload, storage: SQLiteStorage = Depends(ge
         )
 
     actor = payload.request.target_actors[0]
-    
-    # 1. Compile System Prompt
-    system_prompt = actor.compile_actor_system_prompt()
 
-    # 1b. Mermaid guidance: LLMs reliably slip on a few Mermaid syntax rules.
-    # When the task involves Mermaid, append concrete, example-driven rules to
-    # reduce (not eliminate) malformed diagrams. The client-side sanitizer
-    # remains the safety net for whatever still slips through.
-    if _involves_mermaid(actor, payload):
-        system_prompt = f"{system_prompt}\n{MERMAID_SYNTAX_GUIDANCE}"
-    
-    # 2. Compile User Prompt
-    user_prompt = ContextualAssembler.compile_user_prompt(
-        context=payload.request.domain_context,
-        raw_input=payload.request.raw_user_input,
-        supplemental_reference=payload.request.supplemental_reference,
-    )
-    
+    # 1 + 2. Compile the system + user prompts (shared with /compose/prompt so a
+    # previewed prompt is identical to what runs; includes Mermaid guidance when
+    # the task involves Mermaid).
+    _prompts = _compile_prompts(payload)
+    system_prompt = _prompts["system_prompt"]
+    user_prompt = _prompts["user_prompt"]
+
     # 3. Create Provider Request
     provider_req = LLMProviderRequest(
         system_prompt=system_prompt,

@@ -348,11 +348,19 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
     skill_mermaid = Skill(
         id=existing_skills.get("Mermaid Diagram Building", uuid4()),
         name="Mermaid Diagram Building",
-        description="Produce valid Mermaid.js diagram code that renders correctly.",
+        description=(
+            "Produce valid, structural Mermaid.js diagram code that renders correctly. "
+            "Define structure and relationships only — do NOT apply custom colors or "
+            "styling. Let the renderer's theme control all appearance so diagrams stay "
+            "neutral and consistent."
+        ),
         output_format="```mermaid block containing flowchart, sequence, or class diagram```",
         validation_level="machine",
         validation_rules=[
             "Must parse without errors in mermaid.js parser",
+            "Do NOT emit any visual-styling directives: no classDef, no style, no "
+            "linkStyle, no ':::' class applications, and no hard-coded colors/fills. "
+            "Diagram appearance is owned by the renderer's theme, not the diagram source.",
             "ALWAYS wrap a node label in double quotes when it contains ANY of: "
             "parentheses ( ), a line break <br/>, a slash /, angle brackets, or '&'. "
             "Example: AuthSvc[\"Auth Service<br/>(Cognito)\"], not AuthSvc[Auth Service<br/>(Cognito)].",
@@ -373,7 +381,9 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
         anti_patterns=[
             "Single-letter node names with no context",
             "Missing subgraph grouping in multi-tier architecture diagrams",
-            "Hallucinated syntax or unclosed quotes"
+            "Hallucinated syntax or unclosed quotes",
+            "Inline classDef / style / linkStyle directives or hard-coded colors/fills — "
+            "the renderer's theme owns all styling; emit structure only",
         ]
     )
 
