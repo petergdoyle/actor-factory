@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from src.actor_factory.api.routes import router as api_router
+from src.actor_factory.api.docs import router as docs_router
 
 app = FastAPI(
     title="ActorFactory API",
@@ -20,6 +21,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+app.include_router(docs_router)
 
 class HealthCheckResponse(BaseModel):
     status: str

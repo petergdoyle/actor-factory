@@ -9,9 +9,47 @@ import TestBench from './components/TestBench';
 import LLMConfigManager from './components/LLMConfigManager';
 import AuditLogManager from './components/AuditLogManager';
 import SettingsManager, { getStoredTheme, applyTheme } from './components/SettingsManager';
+import HelpDocs from './components/HelpDocs';
 import { getApiBaseUrl } from './utils/api';
 
-type Tab = 'domains' | 'actors' | 'skills' | 'specializations' | 'composer' | 'testbench' | 'llm_configs' | 'audit_logs' | 'settings';
+type Tab =
+  | 'domains'
+  | 'actors'
+  | 'skills'
+  | 'specializations'
+  | 'composer'
+  | 'testbench'
+  | 'llm_configs'
+  | 'audit_logs'
+  | 'settings'
+  | 'help';
+
+interface NavItem {
+  id: Tab;
+  label: string;
+  icon: string;
+  group: 'build' | 'run' | 'system';
+}
+
+// Grouped navigation: author the building blocks, then use them, then system.
+const NAV_ITEMS: NavItem[] = [
+  { id: 'domains', label: 'Domains', icon: '🌐', group: 'build' },
+  { id: 'actors', label: 'Actors', icon: '🎭', group: 'build' },
+  { id: 'skills', label: 'Skills', icon: '⚡', group: 'build' },
+  { id: 'specializations', label: 'Specializations', icon: '🔧', group: 'build' },
+  { id: 'composer', label: 'Composer', icon: '🔗', group: 'run' },
+  { id: 'testbench', label: 'Test Bench', icon: '🧪', group: 'run' },
+  { id: 'llm_configs', label: 'LLM Configurations', icon: '⚙️', group: 'system' },
+  { id: 'audit_logs', label: 'Audit Log', icon: '📋', group: 'system' },
+  { id: 'settings', label: 'Settings', icon: '🎨', group: 'system' },
+  { id: 'help', label: 'Help & Documentation', icon: '📖', group: 'system' },
+];
+
+const GROUP_LABELS: Record<NavItem['group'], string> = {
+  build: 'Build Blocks',
+  run: 'Compose & Run',
+  system: 'System',
+};
 
 interface StackHealth {
   api_status: 'online' | 'offline';
@@ -44,7 +82,7 @@ export default function Home() {
           api_status: data.api_status || 'online',
           llm_status: data.llm_status || 'offline',
           active_provider: data.active_provider || 'Ollama (Local)',
-          active_model: data.active_model || 'llama3',
+          active_model: data.active_model || 'gemma3:12b',
           latency_ms: data.latency_ms || 0
         });
       } else {
@@ -86,111 +124,76 @@ export default function Home() {
     }
   };
 
+  const groups: NavItem['group'][] = ['build', 'run', 'system'];
+
   return (
     <div className="app-shell">
-      {/* Top Navigation Header */}
-      <header className="top-header">
+      {/* Left Sidebar Navigation */}
+      <aside className="app-sidebar">
         <a href="#" className="brand-logo">
           <span>ActorFactory</span> 🤖
         </a>
 
-        {/* Tab Navigation */}
-        <nav className="nav-tabs">
-          <button 
-            className={`tab-btn ${activeTab === 'domains' ? 'active' : ''}`}
-            onClick={() => setActiveTab('domains')}
-          >
-            🌐 Domains
-          </button>
-          <button 
-            className={`tab-btn ${activeTab === 'actors' ? 'active' : ''}`}
-            onClick={() => setActiveTab('actors')}
-          >
-            🎭 Actors
-          </button>
-          <button 
-            className={`tab-btn ${activeTab === 'skills' ? 'active' : ''}`}
-            onClick={() => setActiveTab('skills')}
-          >
-            ⚡ Skills
-          </button>
-          <button 
-            className={`tab-btn ${activeTab === 'specializations' ? 'active' : ''}`}
-            onClick={() => setActiveTab('specializations')}
-          >
-            🔧 Specializations
-          </button>
-          <button 
-            className={`tab-btn ${activeTab === 'composer' ? 'active' : ''}`}
-            onClick={() => setActiveTab('composer')}
-          >
-            🔗 Composer
-          </button>
-          <button 
-            className={`tab-btn ${activeTab === 'testbench' ? 'active' : ''}`}
-            onClick={() => setActiveTab('testbench')}
-          >
-            🧪 Test Bench
-          </button>
-          <button 
-            className={`tab-btn ${activeTab === 'llm_configs' ? 'active' : ''}`}
-            onClick={() => setActiveTab('llm_configs')}
-          >
-            ⚙️ LLM Configurations
-          </button>
-          <button 
-            className={`tab-btn ${activeTab === 'audit_logs' ? 'active' : ''}`}
-            onClick={() => setActiveTab('audit_logs')}
-          >
-            📋 Audit Log
-          </button>
-          <button 
-            className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-            onClick={() => setActiveTab('settings')}
-          >
-            🎨 Settings
-          </button>
+        <nav className="sidebar-nav">
+          {groups.map(group => (
+            <div key={group} className="sidebar-nav-group">
+              <div className="sidebar-nav-group-label">{GROUP_LABELS[group]}</div>
+              {NAV_ITEMS.filter(item => item.group === group).map(item => (
+                <button
+                  key={item.id}
+                  className={`sidebar-nav-btn ${activeTab === item.id ? 'active' : ''}`}
+                  onClick={() => setActiveTab(item.id)}
+                >
+                  <span className="sidebar-nav-icon">{item.icon}</span>
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          ))}
         </nav>
 
-        {/* Stack Status & Action Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* Stack Health Status Indicators */}
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span className={`badge ${stackHealth.api_status === 'online' ? 'success' : ''}`}>
-              {stackHealth.api_status === 'online' ? '🟢 API Connected' : '🔴 API Offline'}
-            </span>
-
-            <span className={`badge ${stackHealth.llm_status === 'online' ? 'success' : stackHealth.llm_status === 'unconfigured' ? 'warning' : ''}`}>
-              {stackHealth.llm_status === 'online' 
-                ? `🟢 LLM: ${stackHealth.active_model}` 
-                : stackHealth.llm_status === 'unconfigured' 
-                ? `⚠️ LLM Unconfigured` 
-                : `🔴 LLM Offline`}
-            </span>
-          </div>
-
-          <button 
-            className="btn-secondary" 
-            style={{ fontSize: '12px', padding: '6px 12px' }}
+        {/* Pinned footer: stack status + seed action */}
+        <div className="sidebar-footer">
+          <span className={`badge ${stackHealth.api_status === 'online' ? 'success' : ''}`}>
+            {stackHealth.api_status === 'online' ? '🟢 API Connected' : '🔴 API Offline'}
+          </span>
+          <span className={`badge ${stackHealth.llm_status === 'online' ? 'success' : stackHealth.llm_status === 'unconfigured' ? 'warning' : ''}`}>
+            {stackHealth.llm_status === 'online'
+              ? `🟢 LLM: ${stackHealth.active_model}`
+              : stackHealth.llm_status === 'unconfigured'
+              ? `⚠️ LLM Unconfigured`
+              : `🔴 LLM Offline`}
+          </span>
+          <button
+            className="btn-secondary"
+            style={{ fontSize: '12px', padding: '6px 12px', width: '100%' }}
             onClick={handleSeedData}
             title="Populate default seed data from specification docs"
           >
             🌱 Seed Library
           </button>
         </div>
-      </header>
+      </aside>
 
       {/* Main Workspace Content */}
       <main className="main-container">
+        {/* The Test Bench stays MOUNTED across tab switches (hidden, not
+            unmounted) so an in-flight LLM run and its streamed output are not
+            lost when the user navigates away and comes back. Other screens are
+            cheap to remount and load fresh. */}
+        <div style={{ display: activeTab === 'testbench' ? 'block' : 'none' }}>
+          <TestBench activeComposition={activeComposition} initialPrompt={initialPrompt} />
+        </div>
+
         {activeTab === 'domains' && <DomainManager />}
         {activeTab === 'actors' && <ActorManager />}
         {activeTab === 'skills' && <SkillManager />}
         {activeTab === 'specializations' && <SpecializationManager />}
         {activeTab === 'composer' && <Composer onSelectForTesting={handleSelectForTesting} />}
-        {activeTab === 'testbench' && <TestBench activeComposition={activeComposition} initialPrompt={initialPrompt} />}
         {activeTab === 'llm_configs' && <LLMConfigManager onConfigChanged={checkHealth} />}
         {activeTab === 'audit_logs' && <AuditLogManager />}
         {activeTab === 'settings' && <SettingsManager />}
+        {activeTab === 'help' && <HelpDocs />}
       </main>
     </div>
   );

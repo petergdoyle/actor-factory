@@ -26,9 +26,12 @@ export default function LLMConfigManager({ onConfigChanged }: { onConfigChanged?
   const [providerType, setProviderType] = useState<LLMConfig['provider_type']>('ollama');
   const [baseUrl, setBaseUrl] = useState('http://localhost:11434');
   const [apiKey, setApiKey] = useState('');
-  const [activeModel, setActiveModel] = useState('gemma4:12b');
+  const [activeModel, setActiveModel] = useState('gemma3:12b');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [newModel, setNewModel] = useState('');
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [manualEntry, setManualEntry] = useState(false);
 
   const loadConfigs = async () => {
     try {
@@ -59,6 +62,10 @@ export default function LLMConfigManager({ onConfigChanged }: { onConfigChanged?
     setActiveModel(c.active_model || '');
     setAvailableModels(c.available_models || []);
     setTestResult(null);
+    setModelsError(null);
+    setManualEntry(false);
+    // Live-refresh the model list from the provider on select.
+    fetchModels({ base: c.base_url || '', provider: c.provider_type, configId: c.id });
   };
 
   const handleNew = () => {
@@ -68,8 +75,8 @@ export default function LLMConfigManager({ onConfigChanged }: { onConfigChanged?
     setProviderType('ollama');
     setBaseUrl('http://localhost:11434');
     setApiKey('');
-    setActiveModel('gemma4:12b');
-    setAvailableModels(['gemma4:12b', 'llama3']);
+    setActiveModel('gemma3:12b');
+    setAvailableModels(['gemma3:12b', 'llama3.2:latest']);
     setTestResult(null);
   };
 
@@ -114,10 +121,10 @@ export default function LLMConfigManager({ onConfigChanged }: { onConfigChanged?
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          config_id: selectedId,
           provider_type: providerType,
           base_url: baseUrl,
-          api_key: apiKey,
-          model_id: activeModel
+          api_key: apiKey
         })
       });
 
@@ -129,8 +136,8 @@ export default function LLMConfigManager({ onConfigChanged }: { onConfigChanged?
           message: data.message
         });
 
-        if (data.available_models && data.available_models.length > 0) {
-          setAvailableModels(data.available_models);
+        if (data.models && data.models.length > 0) {
+          setAvailableModels(data.models);
         }
       } else {
         setTestResult({
@@ -157,7 +164,7 @@ export default function LLMConfigManager({ onConfigChanged }: { onConfigChanged?
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           config_id: configId,
-          model_id: activeModel
+          active_model: activeModel
         })
       });
 
@@ -181,6 +188,44 @@ export default function LLMConfigManager({ onConfigChanged }: { onConfigChanged?
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const fetchModels = async (opts?: { base?: string; provider?: string; configId?: string | null }) => {
+    const base = opts?.base ?? baseUrl;
+    const provider = opts?.provider ?? providerType;
+    const configId = opts?.configId ?? selectedId;
+
+    // Only Ollama (and mock) support live discovery here.
+    if (provider !== 'ollama' && provider !== 'mock') {
+      setModelsError(null);
+      return;
+    }
+
+    setIsLoadingModels(true);
+    setModelsError(null);
+    try {
+      const params = new URLSearchParams({ provider_type: provider });
+      if (base) params.set('base_url', base);
+      if (configId) params.set('config_id', configId);
+
+      const res = await fetch(`${getApiBaseUrl()}/llm/models?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        const models: string[] = data.models || [];
+        setAvailableModels(models);
+        if (data.status !== 'online') {
+          setModelsError(data.message || 'Provider is offline.');
+        } else if (models.length === 0) {
+          setModelsError('No models found. Pull one with: ollama pull <model>');
+        }
+      } else {
+        setModelsError(`Failed to load models (HTTP ${res.status}).`);
+      }
+    } catch (e: any) {
+      setModelsError(e.message || 'Failed to reach provider.');
+    } finally {
+      setIsLoadingModels(false);
     }
   };
 
@@ -298,24 +343,70 @@ export default function LLMConfigManager({ onConfigChanged }: { onConfigChanged?
         </div>
 
         <div className="form-group">
-          <label>Active Default Model ID</label>
-          <input 
-            type="text" 
-            value={activeModel} 
-            onChange={e => setActiveModel(e.target.value)} 
-            placeholder="e.g. gemma4:12b, llama3, gpt-4o, claude-3-5-sonnet" 
-          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <label>Active Default Model</label>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ padding: '2px 10px', fontSize: '12px' }}
+                onClick={() => fetchModels()}
+                disabled={isLoadingModels}
+              >
+                {isLoadingModels ? 'Loading...' : '⟳ Refresh models'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setManualEntry(!manualEntry)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                {manualEntry ? 'Pick from list' : 'Enter manually'}
+              </button>
+            </div>
+          </div>
+
+          {manualEntry ? (
+            <input
+              type="text"
+              value={activeModel}
+              onChange={e => setActiveModel(e.target.value)}
+              placeholder="e.g. gemma3:12b, llama3.2:latest, gpt-4o, claude-3-5-sonnet"
+            />
+          ) : (
+            <select
+              value={activeModel}
+              onChange={e => setActiveModel(e.target.value)}
+              disabled={isLoadingModels}
+            >
+              <option value="">
+                {isLoadingModels ? 'Loading models...' : 'Select a model...'}
+              </option>
+              {/* Keep a previously-saved model selectable even if the daemon is offline. */}
+              {activeModel && !availableModels.includes(activeModel) && (
+                <option value={activeModel}>{activeModel} (saved)</option>
+              )}
+              {availableModels.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          )}
+
+          {modelsError && (
+            <p style={{ fontSize: '12px', color: 'var(--danger, #e5484d)', marginTop: '6px' }}>
+              {modelsError}
+            </p>
+          )}
         </div>
 
         {/* Model Discovery / List */}
         <div className="form-group">
-          <label>Available Models Catalog</label>
+          <label>Available Models {availableModels.length > 0 ? `(${availableModels.length} discovered)` : ''}</label>
           <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
             <input 
               type="text" 
               value={newModel} 
               onChange={e => setNewModel(e.target.value)} 
-              placeholder="Add model ID..." 
+              placeholder="Manually add a model ID (fallback)..." 
               onKeyDown={e => e.key === 'Enter' && addModel()}
             />
             <button className="btn-secondary" style={{ padding: '0 16px' }} onClick={addModel}>

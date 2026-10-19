@@ -5,7 +5,7 @@ from pydantic import BaseModel
 class LLMProviderRequest(BaseModel):
     system_prompt: str
     user_prompt: str
-    model_id: str = "ollama:llama3"
+    model_id: str = "ollama:gemma3:12b"
     temperature: float = 0.2
     max_tokens: int = 4096
 

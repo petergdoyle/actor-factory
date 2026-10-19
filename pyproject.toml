@@ -1,19 +1,29 @@
 [project]
 name = "actor-factory"
 version = "0.1.0"
-description = "Add your description here"
+description = "A universal engine for building, cataloging, and orchestrating composable, portable prompt actors (Persona × Specialization × Skill) for LLM-backed applications."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+keywords = ["llm", "prompt-engineering", "prompt-composition", "actors", "ai"]
 dependencies = [
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "pydantic>=2.13.4",
     "uvicorn>=0.52.3",
+    "mermaid-repair",
 ]
 
 [build-system]
 requires = ["uv_build>=0.11.19,<0.12.0"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+# mermaid-repair is a sibling open-source package. By default resolve it from its
+# public git repo at a pinned tag. For local co-development, uncomment the
+# editable path to a sibling checkout instead (picks up changes instantly):
+#   mermaid-repair = { path = "../mermaid-repair", editable = true }
+mermaid-repair = { git = "https://github.com/petergdoyle/mermaid-repair.git", tag = "v0.1.1" }
 
 [dependency-groups]
 dev = [

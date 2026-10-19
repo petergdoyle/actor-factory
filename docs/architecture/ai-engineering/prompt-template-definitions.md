@@ -4,6 +4,12 @@
 **Date:** August 2026  
 **Source:** Admin → Prompt Templates
 
+> Heritage note: these are **StoryForge AI** template definitions, kept for
+> reference. ActorFactory's actual seeded catalog (6 domains, 6 actors, 8
+> skills, 10 specializations, 12 goals) lives in
+> `src/actor_factory/storage/seed.py` and is summarized in
+> `persona-skill-specialization-summary.md`.
+
 This document mirrors the definitions as they appear in the StoryForge Admin UI, organized by entity type.
 
 ---

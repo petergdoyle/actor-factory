@@ -15,6 +15,7 @@ from src.actor_factory.models.core import (
     Skill,
     Specialization,
     Composition,
+    Goal,
     LLMProviderConfig,
     actor_to_capability,
     skill_to_capability,
@@ -33,6 +34,10 @@ from src.actor_factory.llm.audit_logger import (
     save_audit_config,
     DEFAULT_CALL_TYPES,
 )
+
+from mermaid_repair import repair_markdown
+
+from src.actor_factory.llm.governance import filter_allowed, is_model_allowed
 
 router = APIRouter(prefix="/api/v1")
 
@@ -148,14 +153,14 @@ def delete_llm_config(config_id: str, storage: SQLiteStorage = Depends(get_stora
     return {"status": "deleted", "id": config_id}
 
 class TestLLMPayload(BaseModel):
-    config_id: str
+    config_id: Optional[str] = None
     base_url: Optional[str] = None
     api_key: Optional[str] = None
     provider_type: Optional[str] = None
 
 @router.post("/llm/test")
 def test_llm_connection(payload: TestLLMPayload, storage: SQLiteStorage = Depends(get_storage)):
-    cfg = storage.get_llm_config(payload.config_id)
+    cfg = storage.get_llm_config(payload.config_id) if payload.config_id else None
     base_url = payload.base_url or (cfg.base_url if cfg else None) or "http://localhost:11434"
     provider_type = payload.provider_type or (cfg.provider_type if cfg else "ollama")
 
@@ -176,6 +181,8 @@ def test_llm_connection(payload: TestLLMPayload, storage: SQLiteStorage = Depend
                     latency = int((time.time() - t0) * 1000)
                     data = resp.json()
                     models = [m.get("name", "") for m in data.get("models", [])]
+                    # Apply the configured model allow/deny policy to discovered models.
+                    models = filter_allowed(models)
                     if cfg:
                         cfg.status = "online"
                         cfg.available_models = models
@@ -212,6 +219,96 @@ def test_llm_connection(payload: TestLLMPayload, storage: SQLiteStorage = Depend
             "models": cfg.available_models if cfg else []
         }
 
+@router.get("/llm/models")
+def list_available_models(
+    base_url: Optional[str] = Query(default=None),
+    provider_type: str = Query(default="ollama"),
+    config_id: Optional[str] = Query(default=None),
+    storage: SQLiteStorage = Depends(get_storage),
+):
+    """Return models the provider currently has available (live discovery).
+
+    For Ollama this queries GET /api/tags, which is the HTTP equivalent of
+    `ollama list`. Works for localhost, Docker and remote daemons alike.
+    """
+    cfg = storage.get_llm_config(config_id) if config_id else None
+    resolved_base = base_url or (cfg.base_url if cfg else None) or "http://localhost:11434"
+    resolved_provider = provider_type or (cfg.provider_type if cfg else "ollama")
+
+    if resolved_provider == "mock":
+        return {"status": "online", "models": ["mock"]}
+
+    if resolved_provider == "ollama":
+        url = f"{resolved_base.rstrip('/')}/api/tags"
+        try:
+            with httpx.Client(timeout=5.0) as client:
+                resp = client.get(url)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models = [m.get("name", "") for m in data.get("models", []) if m.get("name")]
+                    # Apply the model allow/deny policy: drop disallowed providers.
+                    models = filter_allowed(models)
+                    return {"status": "online", "models": models}
+                return {
+                    "status": "offline",
+                    "models": [],
+                    "message": f"Ollama returned HTTP status {resp.status_code}.",
+                }
+        except Exception as e:
+            return {
+                "status": "offline",
+                "models": [],
+                "message": f"Could not connect to Ollama at {resolved_base}: {str(e)}",
+            }
+
+    # Cloud providers do not expose a public model list here; fall back to
+    # whatever is stored on the config.
+    return {"status": "online", "models": cfg.available_models if cfg else []}
+
+
+@router.get("/llm/loaded")
+def list_loaded_models(
+    base_url: Optional[str] = Query(default=None),
+    config_id: Optional[str] = Query(default=None),
+    storage: SQLiteStorage = Depends(get_storage),
+):
+    """Report Ollama models currently loaded in memory (``GET /api/ps``) and a
+    recommended model to use by default.
+
+    With limited hardware you typically run ONE model at a time: Ollama loads a
+    model on first use and unloads it after an idle timeout. Defaulting to an
+    already-loaded model avoids the cold-load delay. When nothing is loaded,
+    ``recommended`` is null and the caller should fall back to the active
+    config / a pulled model.
+    """
+    cfg = storage.get_llm_config(config_id) if config_id else None
+    resolved_base = base_url or (cfg.base_url if cfg else None) or "http://localhost:11434"
+
+    url = f"{resolved_base.rstrip('/')}/api/ps"
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            resp = client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                loaded = [m.get("name", "") for m in data.get("models", []) if m.get("name")]
+                # Never recommend a policy-excluded model even if it is loaded.
+                loaded = filter_allowed(loaded)
+                return {
+                    "status": "online",
+                    "loaded": loaded,
+                    # Recommend the first loaded model (zero load time), if any.
+                    "recommended": loaded[0] if loaded else None,
+                }
+            return {"status": "offline", "loaded": [], "recommended": None}
+    except Exception as e:
+        return {
+            "status": "offline",
+            "loaded": [],
+            "recommended": None,
+            "message": f"Could not connect to Ollama at {resolved_base}: {str(e)}",
+        }
+
+
 class SetActiveLLMPayload(BaseModel):
     config_id: str
     active_model: str
@@ -221,11 +318,44 @@ def set_active_llm(payload: SetActiveLLMPayload, storage: SQLiteStorage = Depend
     cfg = storage.get_llm_config(payload.config_id)
     if not cfg:
         raise HTTPException(status_code=404, detail="LLM config not found")
-    
+
+    # Model allow/deny policy: a disallowed provider cannot be made active.
+    if not is_model_allowed(payload.active_model):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Model '{payload.active_model}' is not permitted under the configured model policy "
+                "(non-US-sourced or explicitly excluded provider)."
+            ),
+        )
+
     cfg.is_active = True
     cfg.active_model = payload.active_model
     storage.save_llm_config(cfg)
     return {"status": "success", "active_config": cfg}
+
+
+# ──────────────────────────────────────────────
+# MERMAID REPAIR ENDPOINT
+# ──────────────────────────────────────────────
+# Repair of LLM-generated Mermaid is delegated entirely to the shared
+# `mermaid-repair` library — this app holds NO repair logic of its own. The
+# Test Bench streams raw output for the live typing effect, then calls this
+# once the stream completes to get render-ready markdown (used for both the
+# rendered view and the .md download).
+class RepairMarkdownPayload(BaseModel):
+    markdown: str
+
+
+@router.post("/mermaid/repair")
+def repair_mermaid_markdown(payload: RepairMarkdownPayload):
+    result = repair_markdown(payload.markdown)
+    return {
+        "markdown": result.text,
+        "changed": result.changed,
+        "blocks_total": result.blocks_total,
+        "blocks_repaired": result.blocks_repaired,
+    }
 
 
 # ──────────────────────────────────────────────
@@ -318,6 +448,46 @@ def delete_composition(comp_id: UUID, storage: SQLiteStorage = Depends(get_stora
     return {"status": "deleted", "id": comp_id}
 
 
+# ──────────────────────────────────────────────
+# GOAL ENDPOINTS
+# ──────────────────────────────────────────────
+@router.get("/goals", response_model=List[Goal])
+def list_goals(
+    domain_id: Optional[UUID] = Query(default=None),
+    actor_id: Optional[UUID] = Query(default=None),
+    storage: SQLiteStorage = Depends(get_storage),
+):
+    """List goals, optionally filtered to a domain and/or an actor it is
+    designed for. A goal with no actor_ids applies to any actor in its domain.
+    """
+    goals = storage.list_goals()
+    if domain_id is not None:
+        goals = [g for g in goals if g.domain_id == domain_id]
+    if actor_id is not None:
+        goals = [g for g in goals if not g.actor_ids or actor_id in g.actor_ids]
+    return goals
+
+
+@router.get("/goals/{goal_id}", response_model=Goal)
+def get_goal(goal_id: UUID, storage: SQLiteStorage = Depends(get_storage)):
+    goal = storage.get_goal(goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    return goal
+
+
+@router.post("/goals", response_model=Goal)
+def save_goal(goal: Goal, storage: SQLiteStorage = Depends(get_storage)):
+    storage.save_goal(goal)
+    return goal
+
+
+@router.delete("/goals/{goal_id}")
+def delete_goal(goal_id: UUID, storage: SQLiteStorage = Depends(get_storage)):
+    storage.delete_goal(goal_id)
+    return {"status": "deleted", "id": goal_id}
+
+
 class ComposePreviewPayload(BaseModel):
     actor_id: UUID
     skill_ids: List[UUID] = []
@@ -380,37 +550,104 @@ def list_profiles(storage: SQLiteStorage = Depends(get_storage)):
     return storage.list_profiles()
 
 class OrchestratePayload(BaseModel):
-    model_id: str = "mock"
+    model_id: Optional[str] = None
     temperature: float = 0.2
     call_type: str = "testbench_execution"
     request: TeamOrchestrationRequest
 
+def _resolve_model_id(requested: Optional[str], storage: SQLiteStorage) -> str:
+    """Resolve the model_id to run with.
+
+    If the caller passed an explicit model_id, honor it. Otherwise fall back to
+    the user's Active Default LLM config (is_active), composing
+    "<provider_type>:<active_model>". Final fallback is the mock provider.
+    """
+    if requested:
+        return requested
+
+    configs = storage.list_llm_configs()
+    active_cfg = next((c for c in configs if c.is_active), None)
+    if not active_cfg and configs:
+        active_cfg = configs[0]
+
+    if active_cfg and active_cfg.active_model:
+        return f"{active_cfg.provider_type}:{active_cfg.active_model}"
+    return "mock"
+
+MERMAID_SYNTAX_GUIDANCE = """
+MERMAID SYNTAX RULES (follow exactly to produce diagrams that render):
+- Wrap a node label in double quotes whenever it contains ANY of: parentheses ( ),
+  a line break <br/>, a slash /, angle brackets, or '&'.
+  Correct:   AuthSvc["Auth Service<br/>(Cognito)"]
+  Incorrect: AuthSvc[Auth Service<br/>(Cognito)]
+- For database/cylinder shapes the quotes go INSIDE the brackets:
+  Correct:   DB[("Orders<br/>Table")]
+  Incorrect: DB[(Orders<br/>Table)]
+- Every edge must use a complete arrow: --> (solid) or -.-> (dotted).
+  Never write --|label| or -.|label|. Correct forms: -->|label| and -.->|label|.
+- Every 'subgraph' must have a matching 'end'.
+- Do not reference style/linkStyle ids that are not defined.
+- Output the diagram inside a single ```mermaid fenced code block.
+""".strip()
+
+
+def _involves_mermaid(actor, payload: "OrchestratePayload") -> bool:
+    """Best-effort detection that the task expects Mermaid output."""
+    haystacks = []
+    skill = getattr(actor, "skill", None)
+    if skill is not None:
+        haystacks.append(getattr(skill, "name", "") or "")
+        haystacks.append(getattr(skill, "core_logic_instruction", "") or "")
+    haystacks.append(payload.call_type or "")
+    return any("mermaid" in h.lower() for h in haystacks)
+
+
 @router.post("/orchestrate")
-def orchestrate(payload: OrchestratePayload):
+def orchestrate(payload: OrchestratePayload, storage: SQLiteStorage = Depends(get_storage)):
     if not payload.request.target_actors:
         raise HTTPException(status_code=400, detail="Must provide at least one target actor")
-    
+
+    model_id = _resolve_model_id(payload.model_id, storage)
+
+    # Last line of defense: never run a policy-excluded model.
+    if not is_model_allowed(model_id):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Model '{model_id}' is not permitted under the configured model policy "
+                "(non-US-sourced or explicitly excluded provider)."
+            ),
+        )
+
     actor = payload.request.target_actors[0]
     
     # 1. Compile System Prompt
     system_prompt = actor.compile_actor_system_prompt()
+
+    # 1b. Mermaid guidance: LLMs reliably slip on a few Mermaid syntax rules.
+    # When the task involves Mermaid, append concrete, example-driven rules to
+    # reduce (not eliminate) malformed diagrams. The client-side sanitizer
+    # remains the safety net for whatever still slips through.
+    if _involves_mermaid(actor, payload):
+        system_prompt = f"{system_prompt}\n{MERMAID_SYNTAX_GUIDANCE}"
     
     # 2. Compile User Prompt
     user_prompt = ContextualAssembler.compile_user_prompt(
         context=payload.request.domain_context,
-        raw_input=payload.request.raw_user_input
+        raw_input=payload.request.raw_user_input,
+        supplemental_reference=payload.request.supplemental_reference,
     )
     
     # 3. Create Provider Request
     provider_req = LLMProviderRequest(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
-        model_id=payload.model_id,
+        model_id=model_id,
         temperature=payload.temperature
     )
 
-    provider_name = payload.model_id.split(":", 1)[0] if ":" in payload.model_id else payload.model_id
-    model_name = payload.model_id.split(":", 1)[-1] if ":" in payload.model_id else payload.model_id
+    provider_name = model_id.split(":", 1)[0] if ":" in model_id else model_id
+    model_name = model_id.split(":", 1)[-1] if ":" in model_id else model_id
 
     modifiers = {
         "persona": actor.actor_name,
@@ -423,7 +660,7 @@ def orchestrate(payload: OrchestratePayload):
     
     # 4. Stream output with audit log wrapper
     try:
-        provider = ProviderRegistry.get_provider(payload.model_id)
+        provider = ProviderRegistry.get_provider(model_id)
         stream_gen = provider.execute_stream(provider_req)
 
         def audit_logging_wrapper():

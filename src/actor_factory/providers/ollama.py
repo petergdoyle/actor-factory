@@ -11,7 +11,7 @@ class OllamaProvider(ILLMProvider):
         self.base_url = base_url.rstrip("/")
 
     def _get_model_name(self, model_id: str) -> str:
-        # Expected format "ollama:model_name", e.g., "ollama:llama3" or "gemma4:12b"
+        # Expected format "ollama:model_name", e.g., "ollama:gemma3:12b" or "gemma3:12b"
         return model_id.split(":", 1)[-1] if ":" in model_id and not model_id.startswith("ollama:") else (
             model_id.replace("ollama:", "") if model_id.startswith("ollama:") else model_id
         )
@@ -81,9 +81,15 @@ class OllamaProvider(ILLMProvider):
             data["model"] = model
             yield f"ℹ️ [Auto-resolved model to '{model}']\n\n"
 
+        # Streaming timeout policy: a short connect timeout (fail fast if Ollama
+        # is down), but NO read timeout — a large local model can take minutes to
+        # generate, and the stream must not be killed mid-generation. As long as
+        # tokens keep arriving the connection stays open.
+        timeout = httpx.Timeout(connect=10.0, read=None, write=30.0, pool=10.0)
+        produced_any = False
         with httpx.Client() as client:
             try:
-                with client.stream("POST", url, json=data, timeout=120.0) as response:
+                with client.stream("POST", url, json=data, timeout=timeout) as response:
                     if response.status_code == 404:
                         yield f"\n[OLLAMA ERROR]: Model '{model}' not found on Ollama server at {self.base_url}.\nAvailable models: {', '.join(available) if available else 'None'}.\nPlease run 'ollama pull {model}' or select an available model in LLM Configurations."
                         return
@@ -92,9 +98,30 @@ class OllamaProvider(ILLMProvider):
                         if line:
                             try:
                                 chunk = json.loads(line)
-                                if "response" in chunk:
+                                if chunk.get("response"):
+                                    produced_any = True
                                     yield chunk["response"]
+                                # Surface an Ollama-reported error in the stream body.
+                                if chunk.get("error"):
+                                    yield f"\n[OLLAMA ERROR]: {chunk['error']}"
+                                    produced_any = True
                             except json.JSONDecodeError:
                                 continue
+            except httpx.ConnectError:
+                yield (
+                    f"\n[OLLAMA CONNECTION ERROR]: Could not connect to Ollama at {self.base_url}. "
+                    "Is the Ollama daemon running?"
+                )
+                return
             except Exception as e:
-                yield f"\n[OLLAMA CONNECTION ERROR]: {str(e)}"
+                yield f"\n[OLLAMA ERROR]: {type(e).__name__}: {str(e)}"
+                return
+
+        # A completed-but-empty stream is a real failure mode (model produced
+        # nothing). Never end silently — tell the user what happened.
+        if not produced_any:
+            yield (
+                f"\n[NO OUTPUT]: The model '{model}' returned an empty response. "
+                "This can happen if the model is still loading, the prompt was rejected, "
+                "or the model ran out of context. Try again, or select a different model."
+            )

@@ -1,5 +1,5 @@
 from uuid import uuid4
-from src.actor_factory.models.core import Domain, Actor, Skill, Specialization, Composition, LLMProviderConfig
+from src.actor_factory.models.core import Domain, Actor, Skill, Specialization, Composition, Goal, Sample, LLMProviderConfig
 from src.actor_factory.storage.sqlite import SQLiteStorage
 
 def seed_default_data(storage: SQLiteStorage, force: bool = False):
@@ -11,10 +11,10 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
             name="Ollama (Local)",
             provider_type="ollama",
             base_url="http://localhost:11434",
-            active_model="gemma4:12b",
+            active_model="gemma3:12b",  # default for actor-factory: mature, steady structured output, fits M3 16-24GB
             is_active=True,
             status="online",
-            available_models=["gemma4:12b", "llama3", "llama3.2", "mistral", "mermaid-fixer"]
+            available_models=["gemma3:12b", "llama3.2:latest"]
         ),
         LLMProviderConfig(
             id="ollama_remote",
@@ -79,8 +79,13 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
     existing_skills = {s.name: s.id for s in storage.list_skills()}
     existing_specs = {s.name: s.id for s in storage.list_specializations()}
     existing_comps = {c.name: c.id for c in storage.list_compositions()}
+    existing_goals = {g.key: g.id for g in storage.list_goals()}
 
     if existing_domains and not force:
+        # Catalog already seeded. Top up Goals if they're missing (e.g. an
+        # existing DB from before Goals existed) without disturbing other data.
+        if not existing_goals:
+            _seed_goals(storage, resolve_from_db=True)
         return
 
     # If force, clear duplicates from sqlite table first
@@ -92,6 +97,7 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
             cursor.execute("DELETE FROM skills")
             cursor.execute("DELETE FROM specializations")
             cursor.execute("DELETE FROM compositions")
+            cursor.execute("DELETE FROM goals")
             conn.commit()
         existing_domains = {}
         existing_actors = {}
@@ -347,9 +353,17 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
         validation_level="machine",
         validation_rules=[
             "Must parse without errors in mermaid.js parser",
-            "Nodes with special characters must use quoted labels: A[\"label\"]",
-            "Every subgraph must have a matching end",
-            "No style or linkStyle directives that crash parser"
+            "ALWAYS wrap a node label in double quotes when it contains ANY of: "
+            "parentheses ( ), a line break <br/>, a slash /, angle brackets, or '&'. "
+            "Example: AuthSvc[\"Auth Service<br/>(Cognito)\"], not AuthSvc[Auth Service<br/>(Cognito)].",
+            "For database/cylinder shapes the quotes go INSIDE the brackets: "
+            "DB[(\"Orders<br/>Table\")], not DB[(Orders<br/>Table)].",
+            "EVERY edge must use a full arrow. Use --> (solid) or -.-> (dotted). "
+            "Never write --|label| or -.|label|; the correct forms are -->|label| and -.->|label|.",
+            "Define every node with its label on first use; do not introduce a new node "
+            "with a label inside an edge statement if it already has a :::class applied.",
+            "Every subgraph must have a matching 'end'.",
+            "Do not emit style or linkStyle directives that reference undefined ids.",
         ],
         quality_patterns=[
             "Nodes have meaningful descriptive labels, not A/B/C",
@@ -750,3 +764,224 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
 
     for c in [comp1, comp2, comp3, comp4]:
         storage.save_composition(c)
+
+    # 6. GOALS (+ SAMPLES) — seeded from the DB so the same definitions serve
+    # both a full seed and a top-up on an older DB that predates Goals.
+    _seed_goals(storage)
+
+
+def _seed_goals(storage: "SQLiteStorage", resolve_from_db: bool = True) -> None:
+    """Seed the default Goals (+ Samples) for every domain actor.
+
+    A Goal is a defined task an actor is asked to achieve. Its `key` is the
+    audit-log call_type — the unit of tracking and tuning. Samples are
+    interchangeable example inputs that all exercise the same goal. Entity ids
+    are resolved by name/key from the DB, so this is safe to run as a top-up
+    against an existing catalog without disturbing other data.
+    """
+    dom = {d.name: d.id for d in storage.list_domains()}
+    act = {a.name: a.id for a in storage.list_actors()}
+    sk = {s.name: s.id for s in storage.list_skills()}
+    existing_goals = {g.key: g.id for g in storage.list_goals()}
+
+    # Any referenced entity must exist; bail quietly if the catalog is absent.
+    if not dom or not act:
+        return
+
+    goals = [
+        # ── Software Engineering: Software Architect ──
+        Goal(
+            id=existing_goals.get("build_mermaid_diagram", uuid4()),
+            key="build_mermaid_diagram",
+            name="Build a Mermaid Diagram",
+            description="Produce a valid, renderable Mermaid diagram of a system or flow.",
+            domain_id=dom["Software Engineering"],
+            actor_ids=[act["Software Architect"], act["Site Reliability Engineer"], act["Enterprise Architect"]],
+            suggested_skill_id=sk.get("Mermaid Diagram Building"),
+            samples=[
+                Sample(label="E-commerce checkout flow", input="Design an e-commerce checkout flow with auth, payment processing, inventory reservation, and email notifications. Produce an architecture overview and a Mermaid diagram of the services and their interactions."),
+                Sample(label="Real-time notification service", input="Design a real-time notification service that fans out events to web, mobile push, and email. Address delivery guarantees, backpressure, and retry/dead-letter handling. Include a Mermaid diagram."),
+                Sample(label="CI/CD pipeline", input="Diagram a CI/CD pipeline from commit to production: build, test, security scan, staging deploy, approval gate, and blue-green production rollout. Include a Mermaid diagram."),
+            ],
+        ),
+        Goal(
+            id=existing_goals.get("api_design", uuid4()),
+            key="api_design",
+            name="Design an API Contract",
+            description="Design a clean REST/OpenAPI contract or event schema for a service.",
+            domain_id=dom["Software Engineering"],
+            actor_ids=[act["Software Architect"]],
+            suggested_skill_id=sk.get("API Contract Design"),
+            samples=[
+                Sample(label="Orders API", input="Design a REST API for an Orders service: create/read/cancel orders, list a customer's orders with pagination, and explicit error responses. Provide an OpenAPI 3.0 sketch."),
+                Sample(label="Webhook event schema", input="Design the event payload schema a payment provider would POST to our webhook for payment success, failure, and refund events, with versioning and idempotency keys."),
+                Sample(label="Search API", input="Design a product search API with filtering, sorting, faceted results, and cursor pagination. Include request/response schemas and error cases."),
+            ],
+        ),
+
+        # ── Infrastructure & Ops: Site Reliability Engineer ──
+        Goal(
+            id=existing_goals.get("design_infrastructure", uuid4()),
+            key="design_infrastructure",
+            name="Design Cloud Infrastructure",
+            description="Design reliable, scalable cloud infrastructure with a topology diagram.",
+            domain_id=dom["Infrastructure & Ops"],
+            actor_ids=[act["Site Reliability Engineer"]],
+            suggested_skill_id=sk.get("Mermaid Diagram Building"),
+            samples=[
+                Sample(label="HA web tier on AWS", input="Design a highly available, auto-scaling web tier on AWS across three availability zones, with a load balancer, health checks, and zero-downtime deploys. Include a Mermaid diagram of the network topology and failover paths."),
+                Sample(label="Multi-region DR", input="Design a multi-region disaster-recovery setup for a stateful service with an RPO of 5 minutes and an RTO of 30 minutes. Cover data replication, failover, and failback. Include a Mermaid diagram."),
+                Sample(label="Observability stack", input="Design an observability stack (metrics, logs, traces) for a microservices platform, including collection, storage, alerting, and dashboards. Include a Mermaid diagram."),
+            ],
+        ),
+        Goal(
+            id=existing_goals.get("write_runbook", uuid4()),
+            key="write_runbook",
+            name="Write an Incident Runbook",
+            description="Write an operational runbook for detecting and resolving an incident.",
+            domain_id=dom["Infrastructure & Ops"],
+            actor_ids=[act["Site Reliability Engineer"]],
+            samples=[
+                Sample(label="Elevated 5xx errors", input="Write an incident response runbook for a sudden spike in 5xx errors on the checkout API. Cover detection, triage, mitigation, rollback, and comms, with clear ownership at each step."),
+                Sample(label="Database failover", input="Write a runbook for a primary database failure: detection, promoting a replica, redirecting traffic, verifying integrity, and post-incident review."),
+                Sample(label="Certificate expiry", input="Write a runbook for a TLS certificate expiry outage: detection, emergency reissue/rotation, validation, and prevention via monitoring."),
+            ],
+        ),
+
+        # ── Product & Business Analyst: Product Owner ──
+        Goal(
+            id=existing_goals.get("generate_stories", uuid4()),
+            key="generate_stories",
+            name="Write User Stories",
+            description="Decompose a need into INVEST user stories with testable acceptance criteria.",
+            domain_id=dom["Product & Business Analyst"],
+            actor_ids=[act["Product Owner"]],
+            suggested_skill_id=sk.get("User Story Writing"),
+            samples=[
+                Sample(label="Returns workflow", input="Our customers need to return online orders. Break this into INVEST user stories with testable acceptance criteria, covering initiating a return, printing a label, tracking status, and issuing a refund."),
+                Sample(label="Saved payment methods", input="Customers want to save and reuse payment methods. Write user stories covering adding, selecting, editing, and deleting a saved method, with security-aware acceptance criteria."),
+                Sample(label="Order notifications", input="Customers want notifications about their order status. Write user stories for email and push notifications across order placed, shipped, and delivered, with opt-out handling."),
+            ],
+        ),
+        Goal(
+            id=existing_goals.get("process_analysis", uuid4()),
+            key="process_analysis",
+            name="Analyze a Business Process",
+            description="Map a current-state process and propose an improved future state with a flow diagram.",
+            domain_id=dom["Product & Business Analyst"],
+            actor_ids=[act["Product Owner"]],
+            suggested_skill_id=sk.get("Mermaid Diagram Building"),
+            samples=[
+                Sample(label="Invoice approval", input="Map the current-state manual invoice approval process (email-based, no tracking) and propose a future-state automated workflow with approval routing and SLA escalation. Include a Mermaid swimlane-style diagram."),
+                Sample(label="Customer onboarding", input="Map the current customer onboarding process and propose a streamlined future state that reduces time-to-value. Include a Mermaid diagram."),
+                Sample(label="Support ticket triage", input="Analyze the support ticket triage process and propose an automated routing and prioritization workflow. Include a Mermaid diagram with decision points."),
+            ],
+        ),
+
+        # ── InfoSec & Security: Security Architect ──
+        Goal(
+            id=existing_goals.get("threat_modeling", uuid4()),
+            key="threat_modeling",
+            name="Threat-Model a System",
+            description="Perform a STRIDE threat model with trust boundaries and mitigations.",
+            domain_id=dom["InfoSec & Security"],
+            actor_ids=[act["Security Architect"]],
+            suggested_skill_id=sk.get("Mermaid Diagram Building"),
+            samples=[
+                Sample(label="Customer login", input="Perform a STRIDE threat model of a customer login flow that uses email/password plus OAuth social login. Identify threats per category, the trust boundaries, and concrete mitigations. Include a Mermaid data-flow diagram with trust boundaries."),
+                Sample(label="Payment processing", input="Threat-model the payment processing path from checkout to third-party gateway. Identify threats, PCI-relevant controls, and mitigations. Include a Mermaid diagram."),
+                Sample(label="Admin API", input="Threat-model an internal admin API that can modify customer accounts. Cover authn/authz, privilege escalation, auditing, and mitigations. Include a Mermaid diagram."),
+            ],
+        ),
+        Goal(
+            id=existing_goals.get("security_review", uuid4()),
+            key="security_review",
+            name="Security Review",
+            description="Review a design or configuration for security issues and recommend fixes.",
+            domain_id=dom["InfoSec & Security"],
+            actor_ids=[act["Security Architect"]],
+            samples=[
+                Sample(label="Secrets handling", input="Review this approach and flag security issues: API keys committed to the repo in config.json, passed to services via environment variables, and logged at startup for debugging. Recommend a compliant secrets strategy."),
+                Sample(label="S3 bucket exposure", input="Review an architecture where user-uploaded files are stored in a public S3 bucket with predictable object keys. Identify the risks and recommend a secure design."),
+                Sample(label="JWT handling", input="Review a design that stores JWTs in localStorage and never expires them. Identify the risks and recommend secure token handling."),
+            ],
+        ),
+
+        # ── K-12 Education: Teaching Assistant ──
+        Goal(
+            id=existing_goals.get("evaluate_student_rubric", uuid4()),
+            key="evaluate_student_rubric",
+            name="Grade a Student Submission",
+            description="Evaluate a student's work against a provided rubric with evidence and feedback.",
+            domain_id=dom["K-12 Education"],
+            actor_ids=[act["Teaching Assistant"]],
+            suggested_skill_id=sk.get("Rubric-Based Assessment & Grading"),
+            samples=[
+                Sample(
+                    label="Math exam (with rubric)",
+                    input="EVALUATE STUDENT SUBMISSION:\n\nStudent Name: Alex Smith\nMath Exam Answers:\nProblem 1: 3x + 5 = 20 => 3x = 15 => x = 5 (Step-by-step derivation correct)\nProblem 2: Calculate area of circle (r=4): A = pi * 4^2 = 16 * 3.14 = 50.24 (Correct)\nProblem 3: 4 * 8 = 36 (Arithmetic error, setup was correct)",
+                    supplemental_label="Grading Rubric",
+                    supplemental="PRESCRIBED MATH GRADING RUBRIC (4-Point Scale):\n- 4 (Advanced): Complete conceptual understanding. All work shown step-by-step with accurate arithmetic and clear reasoning.\n- 3 (Proficient): Clear understanding. Correct setup and formula application; a minor arithmetic slip permitted (-0.5 pt).\n- 2 (Developing): Partial understanding. Correct formula choice but multiple calculation errors or incomplete steps.\n- 1 (Beginning): Minimal understanding. Incorrect formula applied or unattempted steps.",
+                ),
+                Sample(
+                    label="Short essay (with rubric)",
+                    input="EVALUATE STUDENT SUBMISSION:\n\nStudent Name: Jordan Lee\nPrompt: Argue whether school uniforms should be mandatory.\nEssay: School uniforms should be required because they reduce distractions and make mornings easier. Everyone looks the same so there is less bullying about clothes. Some people say uniforms limit expression but students can express themselves in other ways.",
+                    supplemental_label="Grading Rubric",
+                    supplemental="ESSAY RUBRIC (4 dimensions, 100 pts):\n1. Thesis & Argument (25): clear, defensible thesis with support.\n2. Evidence (25): specific evidence with analysis.\n3. Structure & Transitions (25): logical progression.\n4. Grammar & Style (25): grade-appropriate mechanics.",
+                ),
+                Sample(
+                    label="Science short answer",
+                    input="EVALUATE STUDENT SUBMISSION:\n\nStudent Name: Sam Rivera\nQuestion: Explain why ice floats on water.\nAnswer: Ice floats because it is lighter than water. When water freezes it expands so it is less dense.",
+                    supplemental_label="Grading Rubric",
+                    supplemental="SCIENCE SHORT-ANSWER RUBRIC (4-Point): 4 = correct concept (density) with accurate explanation; 3 = correct concept, minor imprecision; 2 = partially correct; 1 = incorrect concept.",
+                ),
+            ],
+        ),
+        Goal(
+            id=existing_goals.get("learning_gap_analysis", uuid4()),
+            key="learning_gap_analysis",
+            name="Analyze Learning Gaps",
+            description="Analyze class results to surface misconceptions and recommend interventions.",
+            domain_id=dom["K-12 Education"],
+            actor_ids=[act["Teaching Assistant"]],
+            suggested_skill_id=sk.get("Formative Learning Gap Analysis"),
+            samples=[
+                Sample(label="Fractions quiz", input="Analyze these class results on a fractions quiz: 18 of 24 students correctly found common denominators, but 15 of 24 incorrectly added numerators AND denominators when summing fractions. Identify the misconception and recommend concrete re-teaching strategies."),
+                Sample(label="Reading comprehension", input="Analyze class results on a reading comprehension unit: most students identified the main idea but struggled to cite textual evidence. Identify the gap and recommend targeted interventions."),
+                Sample(label="Algebra word problems", input="Analyze results where students solve equations correctly in isolation but fail to translate word problems into equations. Identify the gap and recommend instructional strategies."),
+            ],
+        ),
+
+        # ── Enterprise Architecture: Enterprise Architect ──
+        Goal(
+            id=existing_goals.get("integration_design", uuid4()),
+            key="integration_design",
+            name="Design System Integration",
+            description="Design an integration architecture connecting enterprise systems.",
+            domain_id=dom["Enterprise Architecture"],
+            actor_ids=[act["Enterprise Architect"]],
+            suggested_skill_id=sk.get("Enterprise Application Integration"),
+            samples=[
+                Sample(label="CRM + ERP + legacy", input="Design an integration architecture connecting a Salesforce CRM, an SAP ERP, and a legacy on-prem order management system. Specify the integration pattern, canonical data model, error/retry strategy, and system-of-record ownership. Include a Mermaid diagram."),
+                Sample(label="HR data sync", input="Design an integration to sync employee data from Workday to three downstream systems with different schemas and update frequencies. Address canonical modeling and idempotency. Include a Mermaid diagram."),
+                Sample(label="Event backbone", input="Design an event-driven backbone so that an 'order placed' event reliably reaches inventory, billing, and analytics. Cover the messaging pattern, schema governance, and failure handling. Include a Mermaid diagram."),
+            ],
+        ),
+        Goal(
+            id=existing_goals.get("technology_roadmap", uuid4()),
+            key="technology_roadmap",
+            name="Plan a Technology Roadmap",
+            description="Produce a phased modernization roadmap aligned to business priorities.",
+            domain_id=dom["Enterprise Architecture"],
+            actor_ids=[act["Enterprise Architect"]],
+            suggested_skill_id=sk.get("Technology Roadmap Planning"),
+            samples=[
+                Sample(label="Monolith to services", input="Produce a phased technology roadmap to modernize a monolithic retail platform into domain-aligned services over 18 months. Use Now/Next/Later phases with dependencies, decision gates, and risk per initiative."),
+                Sample(label="Cloud migration", input="Produce a roadmap to migrate on-prem workloads to the cloud over four quarters, sequencing by risk and dependency, with capability and skills assessment per phase."),
+                Sample(label="Data platform modernization", input="Produce a roadmap to consolidate fragmented reporting databases into a governed data platform, with phases, dependencies, and measurable success criteria."),
+            ],
+        ),
+    ]
+
+    for g in goals:
+        storage.save_goal(g)

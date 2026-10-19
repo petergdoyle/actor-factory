@@ -1,5 +1,12 @@
 # Prompt Composition System — Reference Guide
 
+> Heritage note: this reference describes the original **StoryForge AI**
+> implementation (YAML templates, admin CRUD UI, auto-detection). ActorFactory
+> uses the same Persona × Skill × Specialization model but stores building
+> blocks as SQLite entities managed via the Seed Library and catalog screens,
+> and adds a **Goal** dimension. For ActorFactory's concrete structure see
+> `persona-skill-specialization-summary.md` and `goals-and-samples.md`.
+
 ## Overview
 
 StoryForge AI uses a **Persona × Skill × Specialization** composition model to build focused, high-quality prompts for any LLM. Rather than writing ad-hoc prompt text per feature, the system composes structured context from three independent, admin-editable dimensions and delivers it as a preamble to every LLM call.
