@@ -2,32 +2,86 @@
 import { useState, useEffect } from 'react';
 import { getApiBaseUrl } from '../utils/api';
 
+// Canonical audit record (schema v1.0): context · provenance · model · inputs · response · stats.
+// Older records used a flat shape (call_type, llm.*, modifiers.*); the `view()`
+// adapter below reads both so a pre-reshape log still renders.
 export interface AuditLogEntry {
+  schema_version?: string;
   timestamp: string;
-  call_id: string;
-  call_type: string;
-  git: {
-    sha: string;
-    branch: string;
+  id?: string;
+  // canonical groups (optional so old records still type-check)
+  context?: {
+    call_type?: string;
+    call_id?: string;
+    goal?: { key?: string; name?: string };
+    [k: string]: unknown;
   };
-  llm: {
-    provider: string;
-    model: string;
-    system_prompt_length: number;
-    system_prompt: string;
-    user_prompt: string;
-    temperature: number;
-    response: string;
-    duration_ms: number;
+  provenance?: {
+    git?: { sha?: string; branch?: string };
+    actor?: string;
+    catalog_version?: string | null;
+    construction?: {
+      persona?: string;
+      persona_title?: string;
+      specializations?: string[];
+      skill?: string;
+      preamble_char_count?: number;
+    };
   };
-  modifiers: {
-    persona: string;
-    persona_title: string;
-    specializations: string[];
-    skill: string;
-    preamble_char_count: number;
+  model?: { provider?: string; name?: string; params?: Record<string, unknown> };
+  inputs?: { system_prompt?: string; user_prompt?: string };
+  response?: { raw?: string; parsed?: unknown; confidence?: unknown; flags?: unknown[] };
+  stats?: {
+    tokens?: { prompt?: number; completion?: number; total?: number; approximate?: boolean };
+    duration_ms?: number;
+    finish_reason?: string | null;
   };
-  domain_context: any;
+  // ── legacy flat fields (pre-reshape records) ──
+  call_type?: string;
+  git?: { sha?: string; branch?: string };
+  llm?: {
+    provider?: string;
+    model?: string;
+    system_prompt?: string;
+    user_prompt?: string;
+    temperature?: number;
+    response?: string;
+    duration_ms?: number;
+  };
+  modifiers?: {
+    persona?: string;
+    persona_title?: string;
+    specializations?: string[];
+    skill?: string;
+    preamble_char_count?: number;
+  };
+}
+
+/** Flatten a canonical-or-legacy entry into a stable display shape. */
+function toView(e: AuditLogEntry) {
+  const construction = e.provenance?.construction;
+  const legacyMods = e.modifiers;
+  const tokens = e.stats?.tokens;
+  return {
+    callType: e.context?.call_type ?? e.call_type ?? '(unknown)',
+    goalName: e.context?.goal?.name ?? '',
+    persona: construction?.persona ?? legacyMods?.persona ?? e.provenance?.actor ?? '',
+    skill: construction?.skill ?? legacyMods?.skill ?? '',
+    specializations: construction?.specializations ?? legacyMods?.specializations ?? [],
+    preambleChars: construction?.preamble_char_count ?? legacyMods?.preamble_char_count,
+    provider: e.model?.provider ?? e.llm?.provider ?? '',
+    model: e.model?.name ?? e.llm?.model ?? '',
+    temperature: (e.model?.params?.temperature as number | undefined) ?? e.llm?.temperature,
+    sha: e.provenance?.git?.sha ?? e.git?.sha ?? 'local',
+    branch: e.provenance?.git?.branch ?? e.git?.branch ?? 'main',
+    systemPrompt: e.inputs?.system_prompt ?? e.llm?.system_prompt ?? '',
+    userPrompt: e.inputs?.user_prompt ?? e.llm?.user_prompt ?? '',
+    response: e.response?.raw ?? e.llm?.response ?? '',
+    durationMs: e.stats?.duration_ms ?? e.llm?.duration_ms,
+    tokensTotal: tokens?.total,
+    tokensApprox: tokens?.approximate,
+    finishReason: e.stats?.finish_reason ?? undefined,
+  };
 }
 
 export default function AuditLogManager() {
@@ -238,16 +292,18 @@ export default function AuditLogManager() {
         ) : (
           logs.map((entry, idx) => {
             const isExpanded = expandedIndex === idx;
+            const v = toView(entry);
             return (
               <div key={idx} className="glass-panel" style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                     <span className="badge active" style={{ textTransform: 'none', fontFamily: 'Geist Mono, monospace' }}>
-                      {entry.call_type}
+                      {v.callType}
                     </span>
-                    <span style={{ fontSize: '12px', fontWeight: 600 }}>{entry.modifiers?.persona}</span>
-                    <span className="tag-chip">{entry.modifiers?.skill}</span>
-                    {entry.modifiers?.specializations?.map((s, i) => (
+                    {v.goalName && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{v.goalName}</span>}
+                    {v.persona && <span style={{ fontSize: '12px', fontWeight: 600 }}>{v.persona}</span>}
+                    {v.skill && <span className="tag-chip">{v.skill}</span>}
+                    {v.specializations.map((s, i) => (
                       <span key={i} className="tag-chip accent">{s}</span>
                     ))}
                   </div>
@@ -256,8 +312,13 @@ export default function AuditLogManager() {
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                       {new Date(entry.timestamp).toLocaleString()}
                     </span>
-                    <span className="badge">{entry.llm?.duration_ms}ms</span>
-                    <span className="badge success">{entry.llm?.model}</span>
+                    {v.durationMs != null && <span className="badge">{v.durationMs}ms</span>}
+                    {v.tokensTotal != null && (
+                      <span className="badge" title={v.tokensApprox ? 'approximate (word-count)' : 'provider-reported'}>
+                        {v.tokensTotal} tok{v.tokensApprox ? '~' : ''}
+                      </span>
+                    )}
+                    {v.model && <span className="badge success">{v.model}</span>}
                     <button 
                       className="btn-secondary" 
                       style={{ padding: '2px 8px', fontSize: '11px' }}
@@ -272,10 +333,10 @@ export default function AuditLogManager() {
                 {!isExpanded && (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '12px', marginTop: '4px' }}>
                     <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
-                      <strong>User Prompt:</strong> {entry.llm?.user_prompt}
+                      <strong>User Prompt:</strong> {v.userPrompt}
                     </div>
                     <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
-                      <strong>Response:</strong> {entry.llm?.response}
+                      <strong>Response:</strong> {v.response}
                     </div>
                   </div>
                 )}
@@ -287,29 +348,29 @@ export default function AuditLogManager() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', fontSize: '11px', background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '6px' }}>
                       <div>
                         <span style={{ color: 'var(--text-muted)', display: 'block' }}>GIT COMMIT SHA</span>
-                        <code style={{ fontSize: '11px' }}>{entry.git?.sha || 'local'} ({entry.git?.branch || 'main'})</code>
+                        <code style={{ fontSize: '11px' }}>{v.sha} ({v.branch})</code>
                       </div>
                       <div>
-                        <span style={{ color: 'var(--text-muted)', display: 'block' }}>PROVIDER & MODEL</span>
-                        <span>{entry.llm?.provider} / {entry.llm?.model}</span>
+                        <span style={{ color: 'var(--text-muted)', display: 'block' }}>PROVIDER &amp; MODEL</span>
+                        <span>{v.provider} / {v.model}</span>
                       </div>
                       <div>
-                        <span style={{ color: 'var(--text-muted)', display: 'block' }}>PREAMBLE LENGTH</span>
-                        <span>{entry.modifiers?.preamble_char_count} chars</span>
+                        <span style={{ color: 'var(--text-muted)', display: 'block' }}>TOKENS {v.tokensApprox ? '(approx)' : ''}</span>
+                        <span>{v.tokensTotal ?? '—'}{v.finishReason ? ` · ${v.finishReason}` : ''}</span>
                       </div>
                       <div>
                         <span style={{ color: 'var(--text-muted)', display: 'block' }}>TEMPERATURE</span>
-                        <span>{entry.llm?.temperature}</span>
+                        <span>{v.temperature ?? '—'}</span>
                       </div>
                     </div>
 
                     {/* Compiled System Prompt */}
                     <div>
                       <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--accent-color)', textTransform: 'uppercase' }}>
-                        1. Compiled System Prompt Preamble
+                        1. Compiled System Prompt {v.preambleChars != null ? `(${v.preambleChars} chars)` : ''}
                       </label>
                       <pre className="prompt-preview-box" style={{ maxHeight: '180px', fontSize: '11px', marginTop: '4px' }}>
-                        {entry.llm?.system_prompt}
+                        {v.systemPrompt}
                       </pre>
                     </div>
 
@@ -319,7 +380,7 @@ export default function AuditLogManager() {
                         2. User Input Payload
                       </label>
                       <pre className="prompt-preview-box" style={{ maxHeight: '140px', fontSize: '11px', marginTop: '4px' }}>
-                        {entry.llm?.user_prompt}
+                        {v.userPrompt}
                       </pre>
                     </div>
 
@@ -329,7 +390,7 @@ export default function AuditLogManager() {
                         3. Recorded LLM Response
                       </label>
                       <pre className="prompt-preview-box" style={{ maxHeight: '240px', fontSize: '11px', marginTop: '4px' }}>
-                        {entry.llm?.response}
+                        {v.response}
                       </pre>
                     </div>
                   </div>

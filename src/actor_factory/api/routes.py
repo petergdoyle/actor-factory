@@ -30,6 +30,7 @@ from src.actor_factory.llm.audit_logger import (
     log_llm_call,
     query_audit_logs,
     list_log_dates,
+    distinct_call_types,
     get_audit_config,
     save_audit_config,
     DEFAULT_CALL_TYPES,
@@ -122,10 +123,24 @@ def search_audit_logs(
     )
 
 @router.get("/llm/audit-logs/config")
-def get_audit_logging_config():
-    """Gets logging controls and disabled call-types."""
+def get_audit_logging_config(storage: SQLiteStorage = Depends(get_storage)):
+    """Gets logging controls and the set of known call-types (goals).
+
+    ``known_call_types`` is the union of: the Goal keys defined in the catalog,
+    the call_types actually present in recent logs, and the built-in defaults —
+    so the UI filter always includes a goal the user just ran, not a stale list.
+    """
     config = get_audit_config()
-    config["known_call_types"] = DEFAULT_CALL_TYPES
+    known: set[str] = set(DEFAULT_CALL_TYPES)
+    try:
+        known.update(g.key for g in storage.list_goals() if getattr(g, "key", None))
+    except Exception:
+        pass
+    try:
+        known.update(distinct_call_types())
+    except Exception:
+        pass
+    config["known_call_types"] = sorted(known)
     return config
 
 @router.put("/llm/audit-logs/config")
@@ -649,15 +664,25 @@ def orchestrate(payload: OrchestratePayload, storage: SQLiteStorage = Depends(ge
     provider_name = model_id.split(":", 1)[0] if ":" in model_id else model_id
     model_name = model_id.split(":", 1)[-1] if ":" in model_id else model_id
 
-    modifiers = {
+    # provenance.construction — which composed actor produced the prompt.
+    construction = {
         "persona": actor.actor_name,
         "persona_title": actor.base_persona.name if hasattr(actor, 'base_persona') else actor.actor_name,
         "specializations": [sp.name for sp in actor.specializations] if hasattr(actor, 'specializations') else [],
         "skill": actor.skill.name if hasattr(actor, 'skill') else "Default Skill",
-        "preamble_char_count": len(system_prompt)
+        "preamble_char_count": len(system_prompt),
     }
+    actor_label = " × ".join(
+        [p for p in [actor.actor_name, construction["skill"]] if p and p != "Default Skill"]
+    ) or actor.actor_name
     domain_ctx = payload.request.domain_context.model_dump()
-    
+    model_params = {
+        "temperature": provider_req.temperature,
+        "top_p": provider_req.top_p,
+        "max_tokens": provider_req.max_tokens,
+        "seed": provider_req.seed,
+    }
+
     # 4. Stream output with audit log wrapper
     try:
         provider = ProviderRegistry.get_provider(model_id)
@@ -666,26 +691,42 @@ def orchestrate(payload: OrchestratePayload, storage: SQLiteStorage = Depends(ge
         def audit_logging_wrapper():
             full_response = []
             start_time = time.time()
+            result = None
             try:
-                for chunk in stream_gen:
+                # Drive the stream manually so we can capture its return value
+                # (the final LLMResult carrying tokens / finish_reason).
+                while True:
+                    try:
+                        chunk = next(stream_gen)
+                    except StopIteration as stop:
+                        result = stop.value
+                        break
                     full_response.append(chunk)
                     yield chunk
             finally:
                 duration_ms = int((time.time() - start_time) * 1000)
-                response_text = "".join(full_response)
+                response_text = result.text if result is not None else "".join(full_response)
+                tokens = result.tokens.model_dump() if result is not None else None
+                finish_reason = result.finish_reason if result is not None else None
                 call_id = f"{actor.actor_name.lower().replace(' ', '_')}/{payload.call_type}"
-                
+
                 log_llm_call(
                     call_type=payload.call_type,
                     call_id=call_id,
-                    domain_context=domain_ctx,
-                    prompt_modifiers=modifiers,
+                    context=domain_ctx,
+                    goal={"key": payload.call_type},
+                    actor=actor_label,
+                    catalog_version=None,
+                    construction=construction,
                     provider=provider_name,
                     model=model_name,
+                    model_params=model_params,
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     response_text=response_text,
-                    duration_ms=duration_ms
+                    duration_ms=duration_ms,
+                    tokens=tokens,
+                    finish_reason=finish_reason,
                 )
 
         return StreamingResponse(audit_logging_wrapper(), media_type="text/event-stream")
