@@ -23,13 +23,12 @@ requires = ["uv_build>=0.11.19,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.uv.sources]
-# mermaid-repair is a sibling open-source package, resolved from a local checkout
-# during development (picks up changes instantly, works offline). Adjust the path
-# to wherever you cloned mermaid-repair.
-#
-# TARGET (once mermaid-repair is published to public GitHub): pin a release tag —
-#   mermaid-repair = { git = "https://github.com/petergdoyle/mermaid-repair.git", tag = "v0.1.1" }
-mermaid-repair = { path = "../../dps-productivity/mermaid-repair", editable = true }
+# mermaid-repair is a sibling open-source package, pinned to a public GitHub
+# release tag — resolves over HTTPS for local dev, CI, and OSS consumers alike.
+# For local co-development against an unreleased change, temporarily point this
+# at a local checkout instead:
+#   mermaid-repair = { path = "../mermaid-repair", editable = true }
+mermaid-repair = { git = "https://github.com/petergdoyle/mermaid-repair.git", tag = "v0.1.1" }
 
 [dependency-groups]
 dev = [
