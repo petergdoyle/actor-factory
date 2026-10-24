@@ -1,19 +1,34 @@
 [project]
 name = "actor-factory"
 version = "0.1.0"
-description = "Add your description here"
+description = "A universal engine for building, cataloging, and orchestrating composable, portable prompt actors (Persona × Specialization × Skill) for LLM-backed applications."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+keywords = ["llm", "prompt-engineering", "prompt-composition", "actors", "ai"]
 dependencies = [
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "pydantic>=2.13.4",
     "uvicorn>=0.52.3",
+    "mermaid-repair",
 ]
+
+[project.optional-dependencies]
+# AWS Bedrock provider. Optional so Ollama-only installs stay lightweight.
+bedrock = ["boto3>=1.34"]
 
 [build-system]
 requires = ["uv_build>=0.11.19,<0.12.0"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+# mermaid-repair is a sibling open-source package, pinned to a public GitHub
+# release tag — resolves over HTTPS for local dev, CI, and OSS consumers alike.
+# For local co-development against an unreleased change, temporarily point this
+# at a local checkout instead:
+#   mermaid-repair = { path = "../mermaid-repair", editable = true }
+mermaid-repair = { git = "https://github.com/petergdoyle/mermaid-repair.git", tag = "v0.1.1" }
 
 [dependency-groups]
 dev = [

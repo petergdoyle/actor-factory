@@ -1,5 +1,12 @@
 # Persona × Skill Composition: Building Validatable AI Expertise
 
+> Heritage note: the composition insight below originated in StoryForge AI and is
+> app-agnostic. ActorFactory applies the same model, with two differences: (1)
+> building blocks are first-class SQLite entities seeded via the Seed Library
+> (not YAML templates), and (2) a **Goal** dimension names the task an actor
+> performs and carries **Samples** — see "Goals & Samples" at the end and the
+> dedicated `goals-and-samples.md` reference.
+
 ## The Insight
 
 Mermaid diagram building isn't a domain — it's a **skill** that can be attached to any domain persona. A Solution Architect draws different mermaid diagrams than an SRE, but both use the same syntax. The syntax is validatable (parseable or not). The architectural thinking behind the diagram is what varies by domain.
@@ -277,14 +284,14 @@ For **Category 3** skills (architecture quality): provide scoring rubrics and co
 
 ---
 
-## Practical Application: StoryForge Prompt Architecture
+## Practical Application: Composition in Practice
 
-### Current State
+### Before
 One generic prompt per operation:
 - "Generate stories from these requirements"
 - "Generate diagrams for these domains"
 
-### Proposed State
+### After
 Composed prompts: `Persona(domain, specialization) + Skill(capability) + Validator(feedback)`
 
 ```python
@@ -333,6 +340,19 @@ def build_prompt(domain: str, specialization: str, skill: str, context: dict) ->
 
 ---
 
+## Goals & Samples (ActorFactory addition)
+
+Composition answers *who, with what expertise, in what form*. A **Goal** answers *what task* — and it is the unit of tracking and tuning.
+
+- A **Goal** is a defined task an actor performs (e.g. `build_mermaid_diagram`, `evaluate_student_rubric`). Its `key` becomes the audit-log `call_type`, so every run for a goal is grouped: you can compare outputs and tune the prompt for one goal without touching another.
+- A goal is scoped to a **domain** and the **actor(s)** it's designed for, so the Test Bench only offers goals that fit the current composition.
+- Each goal owns **Samples** — interchangeable example inputs that all exercise the same goal. One goal, many samples (the e-commerce checkout, the notification service, the CI/CD pipeline all exercise `build_mermaid_diagram`).
+- A sample can carry generic **supplemental reference material** (rubric, coding standard, reference spec) with a label — not hard-coded to grading.
+
+This closes the loop on validatability: because a skill defines what "valid" looks like and a goal groups like tasks, the audit log becomes a per-goal dataset for evaluation and (eventually) fine-tuning.
+
+See `goals-and-samples.md` for the data model and seeded catalog.
+
 ## The Key Takeaway
 
 > The mermaid syntax fixer works because there's ONE correct answer that's machine-verifiable.
@@ -352,7 +372,13 @@ Every validation rule we add is another constraint that narrows the solution spa
 
 ---
 
-## Implementation Decisions (2026-08-10)
+## Implementation Decisions (2026-08-10) — StoryForge heritage
+
+> The decisions and file paths in the remainder of this document describe the
+> original StoryForge AI implementation (YAML templates, `src/storyforge/...`).
+> ActorFactory realizes the same ideas with SQLite entities and the Seed
+> Library; see `persona-skill-specialization-summary.md` and
+> `goals-and-samples.md` for ActorFactory's concrete structure.
 
 ### Decision 1: Specialization Detection — Auto-detect + Override + Suggestion
 

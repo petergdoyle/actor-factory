@@ -56,7 +56,7 @@ flowchart TD
 
 ActorFactory includes a modern, glassmorphic Next.js workspace for managing, configuring, and testing actor compositions:
 
-- 🟢 **Live Stack Health Status**: Persistent header badges (`🟢 API Connected`, `🟢 LLM: gemma4:12b`) polling system health and latency.
+- 🟢 **Live Stack Health Status**: Persistent sidebar badges (`🟢 API Connected`, `🟢 LLM: gemma3:12b`) polling system health and latency.
 - 🌱 **Seed Engine & Factory Reset**: One-click catalog reset (`🌱 Seed Library`) and idempotent auto-seeding.
 - 📋 **Prompt Engineering Audit**: Daily rotating JSONL log files (`output/llm_audit_logs/`) with daily gzip archiving (`.jsonl.gz`), on-demand date range searching, git commit SHA tracking, and per-type logging controls.
 - ⚙️ **LLM Configurations**: Manage LLM providers (Ollama Local, Ollama Remote, OpenAI, Anthropic, AWS Bedrock, Mock), base URLs, API keys, test connection latency, and discover available models.
@@ -112,15 +112,24 @@ make test
 
 ## 📚 Documentation Index
 
-All core architectural designs, specification catalogs, and research documents are maintained under the `docs/` folder:
+All core designs, specification catalogs, and research documents are maintained under the `docs/` folder, organized into four areas:
 
-- 🏛️ **[System Architecture](file:///Users/peterdoyle/Dev/actor-factory/docs/architecture.md)** — Core topology, 3D composition matrix, data models, validation spectrum, LLM configurations, prompt audit log engine, and API routes.
-- 🌱 **[Seed Engine & Factory Reset Pattern](file:///Users/peterdoyle/Dev/actor-factory/docs/seed-engine.md)** — Architectural design and implementation guide for idempotent seeding and database resets.
-- 📚 **[Built-in Seed Catalog](file:///Users/peterdoyle/Dev/actor-factory/docs/seeds.md)** — Complete reference inventory of all default Problem Domains, Actor Personas, Skills, Specializations, Team Compositions, and LLM Providers.
-- 📐 **[AI Engineering Documentation](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/)**:
-  - 🗺️ **[AI Strategy & Blueprint](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/ai-strategy.md)** — Multi-tiered AI application architecture blueprint.
-  - 🧩 **[Persona × Skill Composition](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/persona-skill-composition.md)** — Building validatable AI expertise & feedback chains.
-  - 📊 **[Matrix Composition Summary](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/persona-skill-specialization-summary.md)** — Personas, Skills, Specializations matrix summary.
-  - 📖 **[Prompt Template Definitions](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/prompt-template-definitions.md)** — Complete specification catalog of default templates.
-  - 📝 **[Prompt Composition Reference](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/prompt-composition-reference.md)** — Prompt preamble construction & formatting guide.
-  - ⚡ **[Specialized Small Models](file:///Users/peterdoyle/Dev/actor-factory/docs/ai-engineering/specialized-small-models.md)** — SLM optimization, QLoRA fine-tuning, and model routing.
+**🏛️ [Architecture](./docs/architecture/README.md)** — internal engineering docs (not published to Confluence):
+
+- 📐 **[System Architecture Overview](./docs/architecture/overview.md)** — Core topology, 3D composition matrix, data models, validation spectrum, LLM configurations, prompt audit log engine, and API routes.
+- 🌱 **[Seed Engine & Factory Reset Pattern](./docs/architecture/seed-engine.md)** — Architectural design and implementation guide for idempotent seeding and database resets.
+- 📚 **[Built-in Seed Catalog](./docs/architecture/seeds.md)** — Complete reference inventory of all default Problem Domains, Actor Personas, Skills, Specializations, Team Compositions, and LLM Providers.
+- 🗄️ **[Storage Layer](./docs/architecture/storage-layer.md)** — Persistence design.
+- 📐 **[AI Engineering](./docs/architecture/ai-engineering/)**:
+  - 🗺️ **[AI Strategy & Blueprint](./docs/architecture/ai-engineering/ai-strategy.md)** — Multi-tiered AI application architecture blueprint.
+  - 🧩 **[Persona × Skill Composition](./docs/architecture/ai-engineering/persona-skill-composition.md)** — Building validatable AI expertise & feedback chains.
+  - 📊 **[Matrix Composition Summary](./docs/architecture/ai-engineering/persona-skill-specialization-summary.md)** — Personas, Skills, Specializations matrix summary.
+  - 🎯 **[Goals & Samples](./docs/architecture/ai-engineering/goals-and-samples.md)** — First-class Goals and Samples scoped to domain actors.
+  - 📖 **[Prompt Template Definitions](./docs/architecture/ai-engineering/prompt-template-definitions.md)** — Complete specification catalog of default templates.
+  - 📝 **[Prompt Composition Reference](./docs/architecture/ai-engineering/prompt-composition-reference.md)** — Prompt preamble construction & formatting guide.
+  - ⚡ **[Specialized Small Models](./docs/architecture/ai-engineering/specialized-small-models.md)** — SLM optimization, QLoRA fine-tuning, and model routing.
+
+  - 🧭 **[Consumption Strategy](./docs/architecture/consumption-strategy.md)** — how apps consume ActorFactory: runtime composition vs. published versioned actor definitions + a shared compile library.
+  - 🎭 **[UML Prompt Model](./docs/architecture/uml-prompt-model.md)** — a prompt as an identity; Domain / Actor / Goal / Specialization × Skill mapped to UML.
+
+**❓ In-App Help** — user-facing Help & Documentation lives under `docs/help/` and is served inside the app by the docs API (not duplicated here).

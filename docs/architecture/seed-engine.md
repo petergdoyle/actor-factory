@@ -68,10 +68,10 @@ def seed_default_data(storage: SQLiteStorage, force: bool = False):
             name="Ollama (Local)",
             provider_type="ollama",
             base_url="http://localhost:11434",
-            active_model="gemma4:12b",
+            active_model="gemma3:12b",
             is_active=True,
             status="online",
-            available_models=["gemma4:12b", "llama3", "llama3.2", "mistral", "mermaid-fixer"]
+            available_models=["gemma3:12b", "llama3.2:latest"]
         ),
         # ... Additional cloud providers (OpenAI, Anthropic, Bedrock, Mock) ...
     ]

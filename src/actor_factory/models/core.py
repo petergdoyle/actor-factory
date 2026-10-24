@@ -72,6 +72,40 @@ class Composition(BaseModel):
 
 
 # ──────────────────────────────────────────────
+# Goal + Sample
+# ──────────────────────────────────────────────
+# A Goal is a defined, stable task an actor is asked to achieve (e.g.
+# build_mermaid_diagram, evaluate_student_rubric). Its `key` is the unit of
+# tracking and tuning: it becomes the audit-log call_type, so every run for a
+# given goal is grouped and a prompt can be tuned per-goal. Goals are scoped to
+# a domain and (optionally) specific actors. Each Goal owns a set of Samples —
+# concrete example inputs that exercise that same goal.
+
+class Sample(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    label: str
+    input: str
+    # Optional generic reference material for the task (rubric, coding standard,
+    # reference spec, …) and a human label describing what it is.
+    supplemental: str = ""
+    supplemental_label: str = ""
+
+
+class Goal(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    # Stable identifier, used as the audit-log call_type. e.g. "build_mermaid_diagram".
+    key: str
+    name: str
+    description: str = ""
+    domain_id: Optional[UUID] = None
+    # Actor(s) this goal is designed for. Empty = any actor in the domain.
+    actor_ids: List[UUID] = Field(default_factory=list)
+    # Optional default output skill suggested for this goal.
+    suggested_skill_id: Optional[UUID] = None
+    samples: List[Sample] = Field(default_factory=list)
+
+
+# ──────────────────────────────────────────────
 # LLM Provider Configuration
 # ──────────────────────────────────────────────
 

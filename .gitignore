@@ -1,8 +1,14 @@
+# macOS
+.DS_Store
+
 # Dev logs, pids, databases, audit outputs
 *.log
 *.pid
 *.db
 output/
+
+# Secrets — never commit real credentials (.env.example is the committed template)
+.env
 
 # Python
 __pycache__/

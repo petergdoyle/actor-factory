@@ -38,7 +38,7 @@ flowchart TD
 
     subgraph LLM["Pluggable LLM Gateway"]
         MOCK["Mock Provider"]
-        OLLAMA["Local Ollama Daemon<br/>(gemma4:12b, llama3)"]
+        OLLAMA["Local Ollama Daemon<br/>(gemma3:12b, llama3.2)"]
         CLOUD["Cloud Providers<br/>(OpenAI, Claude, Bedrock)"]
     end
 
@@ -132,4 +132,8 @@ The audit logging system records every LLM call with full context for tuning and
 
 ## 📖 Related Documentation
 
-- 📄 **[Seed Engine & Factory Reset Pattern](file:///Users/peterdoyle/Dev/actor-factory/docs/seed-engine.md)** — Detailed architectural guide on building an idempotent seed engine and factory reset pattern for LLM applications.
+- 📄 **[Seed Engine & Factory Reset Pattern](./seed-engine.md)** — Detailed architectural guide on building an idempotent seed engine and factory reset pattern for LLM applications.
+- 📚 **[Built-in Seed Catalog](./seeds.md)** — Reference inventory of all default domains, personas, skills, specializations, compositions, and providers.
+- 🗄️ **[Storage Layer](./storage-layer.md)** — Persistence design.
+- 📐 **[AI Engineering](./ai-engineering/)** — Strategy, composition, prompt templates, and SLM tuning.
+- 🗂️ **[Architecture Index](./README.md)**

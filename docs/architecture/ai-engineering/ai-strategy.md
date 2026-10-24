@@ -6,6 +6,12 @@ This document defines a multi-tiered architecture for building AI-assisted appli
 
 StoryForge AI is the first implementation of this blueprint. But the blueprint itself is application-agnostic. Any domain that benefits from structured AI generation — legal document drafting, curriculum design, compliance reporting, incident response playbooks — can be built on the same architectural foundation.
 
+> ActorFactory note: ActorFactory is a sibling implementation of this blueprint.
+> It realizes Tier 1 with SQLite entities and a Seed Library (rather than YAML
+> templates + admin CRUD), and extends the model with a **Goal** dimension — the
+> defined task an actor performs, which carries Samples and whose key is the
+> audit `call_type` (the tracking/tuning unit). See `goals-and-samples.md`.
+
 ---
 
 ## The Human Layer: Vision Above All

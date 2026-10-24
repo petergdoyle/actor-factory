@@ -1,7 +1,16 @@
 "use client";
 import { useState, useRef, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { Composition } from './Composer';
 import { getApiBaseUrl } from '../utils/api';
+import ScreenIntro from './ScreenIntro';
+import HelpTip from './HelpTip';
+
+// Rendered view loads Mermaid lazily in the browser only (no SSR).
+const MarkdownView = dynamic(() => import('./MarkdownView'), {
+  ssr: false,
+  loading: () => <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Loading renderer…</div>,
+});
 
 export interface LLMOption {
   id: string;
@@ -37,40 +46,32 @@ export interface SpecializationItem {
   description: string;
 }
 
-const SAMPLE_RUBRICS = [
-  {
-    name: "K-12 Math 4-Point Rubric",
-    content: `PRESCRIBED MATH GRADING RUBRIC (4-Point Scale):
-- 4 (Advanced): Demonstrates complete conceptual understanding. All work shown step-by-step with 100% accurate arithmetic and clear mathematical reasoning.
-- 3 (Proficient): Demonstrates clear conceptual understanding. Correct problem setup and formula application; minor calculation/arithmetic slip permitted (-0.5 pt).
-- 2 (Developing): Partial understanding. Correct formula choice, but multiple calculation errors or incomplete solution steps.
-- 1 (Beginning): Minimal understanding. Incorrect formula applied or unattempted steps.`
-  },
-  {
-    name: "K-12 Essay Evaluation Rubric",
-    content: `PRESCRIBED ESSAY EVALUATION RUBRIC (4 Dimensions, 100 Points Total):
-1. Thesis & Argument (25 pts): Clear, defensible thesis statement supported by strong textual evidence.
-2. Textual Evidence & Quotes (25 pts): Direct quotes cited accurately with explicit analysis explaining how evidence supports the claim.
-3. Structure & Transitions (25 pts): Logical paragraph progression with clear topic sentences and smooth transitions.
-4. Grammar & Style (25 pts): Grade-appropriate vocabulary, sentence variety, and minimal mechanical errors.`
-  },
-  {
-    name: "Software Coding & Architecture Rubric",
-    content: `SOFTWARE CODE REVIEW RUBRIC:
-1. Modularity & SOLID (25%): Low coupling, single responsibility per module, explicit interfaces.
-2. Error Handling (25%): No swallowed exceptions; explicit error pathways for external HTTP/DB calls.
-3. Testability (25%): Pure business logic decoupled from I/O; clean unit test coverage.
-4. Documentation & Schema (25%): Clear OpenAPI contracts or JSDoc/docstrings.`
-  }
-];
+export interface GoalSample {
+  label: string;
+  input: string;
+  supplemental?: string;
+  supplemental_label?: string;
+}
+
+export interface GoalItem {
+  id: string;
+  key: string;
+  name: string;
+  description: string;
+  domain_id?: string;
+  actor_ids: string[];
+  suggested_skill_id?: string;
+  samples: GoalSample[];
+}
 
 export default function TestBench({ activeComposition, initialPrompt }: { activeComposition?: Composition | null, initialPrompt?: string }) {
-  const [modelId, setModelId] = useState('ollama:gemma4:12b');
+  // Empty until the active config loads; backend resolves active default when empty.
+  const [modelId, setModelId] = useState('');
   const [callType, setCallType] = useState('design_ecommerce_solution');
   const [availableModelOptions, setAvailableModelOptions] = useState<LLMOption[]>([
     { id: 'mock', name: 'Mock Provider (Testing)', model_id: 'mock' },
-    { id: 'ollama_gemma4', name: 'Ollama (gemma4:12b)', model_id: 'ollama:gemma4:12b' },
-    { id: 'ollama_llama3', name: 'Ollama (llama3)', model_id: 'ollama:llama3' },
+    { id: 'ollama_gemma3', name: 'Ollama (gemma3:12b)', model_id: 'ollama:gemma3:12b' },
+    { id: 'ollama_llama32', name: 'Ollama (llama3.2:latest)', model_id: 'ollama:llama3.2:latest' },
     { id: 'openai', name: 'OpenAI (gpt-4o)', model_id: 'openai:gpt-4o' },
     { id: 'anthropic', name: 'Anthropic (claude-3-5-sonnet)', model_id: 'anthropic:claude-3-5-sonnet' },
   ]);
@@ -81,6 +82,13 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
   const [skills, setSkills] = useState<SkillItem[]>([]);
   const [specializations, setSpecializations] = useState<SpecializationItem[]>([]);
   const [compositions, setCompositions] = useState<Composition[]>([]);
+  const [goals, setGoals] = useState<GoalItem[]>([]);
+
+  // Goal selection drives the task: its `key` becomes the audit call_type and
+  // its samples populate the sample-input dropdown. Advanced users can type a
+  // custom goal key instead.
+  const [selectedGoalId, setSelectedGoalId] = useState<string>('');
+  const [advancedGoal, setAdvancedGoal] = useState(false);
 
   // Selected Identifiers
   const [selectedDomainId, setSelectedDomainId] = useState<string>('');
@@ -101,14 +109,29 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
   const [skillName, setSkillName] = useState('Mermaid Diagram Building');
   const [skillDesc, setSkillDesc] = useState('Produce valid Mermaid.js diagram code that renders correctly.');
 
-  // Supplemental Reference / Rubric State
+  // Supplemental Reference State (generic — a rubric, coding standard, spec, …)
   const [supplementalRef, setSupplementalRef] = useState<string>('');
+  const [supplementalLabel, setSupplementalLabel] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
 
   const [rawRequirements, setRawRequirements] = useState('Design an e-commerce checkout flow with auth, payment processing, inventory reservation, and email notifications.');
   const [output, setOutput] = useState('// Output will stream here from the FastAPI backend execution engine...');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
+  const [viewMode, setViewMode] = useState<'raw' | 'rendered'>('rendered');
+  const [hasRun, setHasRun] = useState(false);
+
+  // Inline prompt visibility: the exact composed prompt this composition would
+  // send to the LLM (compiled server-side, no model call). The full
+  // request/response exchange lives in the Audit Log, not here.
+  interface ComposedPrompt {
+    systemPrompt: string;
+    userPrompt: string;
+  }
+  const [composedPrompt, setComposedPrompt] = useState<ComposedPrompt | null>(null);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [promptLoading, setPromptLoading] = useState(false);
 
   const outputRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -119,23 +142,40 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
     }
   }, [output]);
 
+  // When a composition is handed over from the Composer ("Load into Test
+  // Bench"), fully populate the persona / specialization / skill selections —
+  // not just the name. Runs once the catalogs have loaded so the ids resolve.
   useEffect(() => {
-    if (activeComposition) {
-      setPersonaName(activeComposition.name);
+    if (!activeComposition) return;
+    if (actors.length === 0 && skills.length === 0 && specializations.length === 0) return;
+
+    if (activeComposition.actor_id) handleActorChange(activeComposition.actor_id);
+    if (activeComposition.skill_ids && activeComposition.skill_ids.length > 0) {
+      handleSkillChange(activeComposition.skill_ids[0]);
     }
-  }, [activeComposition]);
+    if (activeComposition.specialization_ids && activeComposition.specialization_ids.length > 0) {
+      handleSpecChange(activeComposition.specialization_ids[0]);
+    }
+
+    // Default to the first goal for the composition's domain/actor.
+    const actor = actors.find(a => a.id === activeComposition.actor_id);
+    const ctxGoals = goalsForContext(actor?.domain_id || '', activeComposition.actor_id || '');
+    if (ctxGoals.length > 0) applyGoal(ctxGoals[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeComposition, actors, skills, specializations, goals]);
 
   // Load catalogs from backend
   useEffect(() => {
     const loadCatalogData = async () => {
       try {
         const apiBase = getApiBaseUrl();
-        const [domRes, actRes, sklRes, spcRes, cmpRes, cfgRes] = await Promise.all([
+        const [domRes, actRes, sklRes, spcRes, cmpRes, goalRes, cfgRes] = await Promise.all([
           fetch(`${apiBase}/domains`),
           fetch(`${apiBase}/actors`),
           fetch(`${apiBase}/skills`),
           fetch(`${apiBase}/specializations`),
           fetch(`${apiBase}/compositions`),
+          fetch(`${apiBase}/goals`),
           fetch(`${apiBase}/llm/configs`)
         ]);
 
@@ -144,6 +184,7 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
         if (sklRes.ok) setSkills(await sklRes.json());
         if (spcRes.ok) setSpecializations(await spcRes.json());
         if (cmpRes.ok) setCompositions(await cmpRes.json());
+        if (goalRes.ok) setGoals(await goalRes.json());
 
         if (cfgRes.ok) {
           const configs = await cfgRes.json();
@@ -171,8 +212,38 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
 
           if (options.length > 1) {
             setAvailableModelOptions(options);
-            const firstOllama = options.find(o => o.model_id.includes("gemma") || o.model_id.startsWith("ollama:"));
-            if (firstOllama) setModelId(firstOllama.model_id);
+
+            // Default the Test Bench to the user's Active Default config/model,
+            // not a hard-coded gemma/llama heuristic.
+            const activeCfg = configs.find((cfg: any) => cfg.is_active);
+            if (activeCfg && activeCfg.active_model) {
+              const activeModelId = activeCfg.provider_type === 'ollama'
+                ? `ollama:${activeCfg.active_model}`
+                : `${activeCfg.provider_type}:${activeCfg.active_model}`;
+              // Prefer the exact matching option; otherwise fall back to the id string.
+              const match = options.find(o => o.model_id === activeModelId);
+              setModelId(match ? match.model_id : activeModelId);
+            } else {
+              const firstOllama = options.find(o => o.model_id.startsWith("ollama:"));
+              if (firstOllama) setModelId(firstOllama.model_id);
+            }
+
+            // Prefer a model already loaded in Ollama's memory (zero cold-load
+            // delay). On limited hardware only one model runs at a time, so if
+            // something is loaded, default to it over the stored active model.
+            try {
+              const loadedRes = await fetch(`${apiBase}/llm/loaded`);
+              if (loadedRes.ok) {
+                const loaded = await loadedRes.json();
+                if (loaded.recommended) {
+                  const loadedModelId = `ollama:${loaded.recommended}`;
+                  const match = options.find(o => o.model_id === loadedModelId);
+                  if (match) setModelId(match.model_id);
+                }
+              }
+            } catch {
+              // Non-fatal: keep the active-config default if /llm/loaded fails.
+            }
           }
         }
       } catch (e) {
@@ -183,6 +254,29 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
   }, []);
 
   // Handle Domain Selection -> Auto-fills Domain params & Strictly Filters Personas
+  // Goals available for the current domain + actor context. A goal with no
+  // actor_ids applies to any actor in its domain.
+  const goalsForContext = (domainId: string, actorId: string): GoalItem[] =>
+    goals.filter(
+      g =>
+        (!domainId || g.domain_id === domainId) &&
+        (!actorId || g.actor_ids.length === 0 || g.actor_ids.includes(actorId))
+    );
+
+  // Apply a goal's sample to the input / supplemental fields.
+  const applyGoalSample = (sample: GoalSample) => {
+    setRawRequirements(sample.input);
+    setSupplementalRef(sample.supplemental || '');
+    setSupplementalLabel(sample.supplemental_label || '');
+  };
+
+  // Select a goal: its key becomes the audit call_type; load its first sample.
+  const applyGoal = (goal: GoalItem) => {
+    setSelectedGoalId(goal.id);
+    setCallType(goal.key);
+    if (goal.samples.length > 0) applyGoalSample(goal.samples[0]);
+  };
+
   const handleDomainChange = (domainId: string) => {
     setSelectedDomainId(domainId);
     const selected = domains.find(d => d.id === domainId);
@@ -190,18 +284,20 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
       setDomainName(selected.name);
       setDomainParams(JSON.stringify(selected.parameters, null, 2));
 
-      // Auto-set sample rubric if K-12 Education is chosen
-      if (selected.name.includes("Education") || selected.name.includes("K-12")) {
-        setSupplementalRef(SAMPLE_RUBRICS[0].content);
-        setCallType("evaluate_student_rubric");
-        setRawRequirements("EVALUATE STUDENT SUBMISSION:\n\nStudent Name: Alex Smith\nMath Exam Answers:\nProblem 1: 3x + 5 = 20 => 3x = 15 => x = 5 (Step-by-step derivation correct)\nProblem 2: Calculate area of circle (r=4): A = pi * 4^2 = 16 * 3.14 = 50.24 (Correct)\nProblem 3: 4 * 8 = 36 (Arithmetic Error, setup was correct)");
-      }
-
       const matchingActors = actors.filter(a => a.domain_id === domainId);
-      if (matchingActors.length > 0) {
-        handleActorChange(matchingActors[0].id, domainId);
+      const actorId = matchingActors.length > 0 ? matchingActors[0].id : '';
+      if (actorId) {
+        handleActorChange(actorId, domainId);
       } else {
         setSelectedActorId('');
+      }
+
+      // Default to the first goal for this domain/actor and load its sample.
+      const ctxGoals = goalsForContext(domainId, actorId);
+      if (ctxGoals.length > 0) {
+        applyGoal(ctxGoals[0]);
+      } else {
+        setSelectedGoalId('');
       }
     } else {
       setSelectedActorId('');
@@ -265,13 +361,13 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
       handleSpecChange(comp.specialization_ids[0]);
     }
 
-    if (comp.name.includes("Teaching Assistant") || comp.name.includes("Rubric")) {
-      setCallType("evaluate_student_rubric");
-      setSupplementalRef(SAMPLE_RUBRICS[0].content);
-      setRawRequirements("EVALUATE STUDENT SUBMISSION:\n\nStudent Name: Jordan Lee\n1. Solve 2x + 7 = 19: 2x = 12 => x = 6 (Correct)\n2. Factor x^2 - 9: (x-3)(x+3) (Correct)\n3. Calculate 12 * 7: 74 (Arithmetic Error)");
-    } else {
-      setCallType("design_ecommerce_solution");
-    }
+    // Load a relevant sample input from the catalog, based on the domain the
+    // composition's actor belongs to.
+    // Default to the first goal for the composition's domain/actor, loading its
+    // sample input and generic supplemental material.
+    const actor = actors.find(a => a.id === comp.actor_id);
+    const ctxGoals = goalsForContext(actor?.domain_id || '', comp.actor_id || '');
+    if (ctxGoals.length > 0) applyGoal(ctxGoals[0]);
   };
 
   // Handle Local File Upload (Rubrics, Docs, Code, OpenAPI specs)
@@ -290,36 +386,38 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
     reader.readAsText(file);
   };
 
-  const handleGenerate = async () => {
-    if (!rawRequirements.trim()) return;
-    
-    setIsStreaming(true);
-    setOutput('');
-    setDuration(0);
-    const startTime = Date.now();
-    
-    const interval = setInterval(() => {
-      setDuration(Date.now() - startTime);
-    }, 100);
+  const downloadMarkdown = () => {
+    const safe = (personaName || 'composition').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    const blob = new Blob([output], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${safe || 'composition'}-${stamp}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
+  // Build the orchestrate payload from the current form state. Shared by the
+  // run (/orchestrate) and the prompt preview (/compose/prompt) so both use the
+  // identical composition. Returns null if the domain params JSON is invalid.
+  const buildOrchestratePayload = () => {
     let parsedParams = {};
     try {
       parsedParams = JSON.parse(domainParams);
-    } catch (e) {
-      setOutput('Error parsing Domain Parameters JSON');
-      setIsStreaming(false);
-      clearInterval(interval);
-      return;
+    } catch {
+      return null;
     }
-
-    const payload = {
+    return {
       model_id: modelId,
       temperature: 0.2,
       call_type: callType,
       request: {
         domain_context: {
           domain_name: domainName,
-          parameters: parsedParams
+          parameters: parsedParams,
         },
         raw_user_input: rawRequirements,
         supplemental_reference: supplementalRef,
@@ -331,26 +429,52 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
               id: "00000000-0000-0000-0000-000000000001",
               name: personaName,
               ingredient_type: "Persona",
-              core_logic_instruction: personaDesc
+              core_logic_instruction: personaDesc,
             },
             specializations: [
               {
                 id: selectedSpecId || "00000000-0000-0000-0000-000000000002",
                 name: specName,
                 ingredient_type: "Specialization",
-                core_logic_instruction: specDesc
-              }
+                core_logic_instruction: specDesc,
+              },
             ],
             skill: {
               id: selectedSkillId || "00000000-0000-0000-0000-000000000003",
               name: skillName,
               ingredient_type: "Skill",
-              core_logic_instruction: skillDesc
-            }
-          }
-        ]
-      }
+              core_logic_instruction: skillDesc,
+            },
+          },
+        ],
+      },
     };
+  };
+
+  const handleGenerate = async () => {
+    if (!rawRequirements.trim()) return;
+    
+    setIsStreaming(true);
+    setHasRun(true);
+    setRunError(null);
+    setOutput('');
+    setDuration(0);
+    // A fresh run invalidates any previously-shown prompt preview.
+    setComposedPrompt(null);
+    setShowPrompt(false);
+    const startTime = Date.now();
+    
+    const interval = setInterval(() => {
+      setDuration(Date.now() - startTime);
+    }, 100);
+
+    const payload = buildOrchestratePayload();
+    if (!payload) {
+      setOutput('Error parsing Domain Parameters JSON');
+      setIsStreaming(false);
+      clearInterval(interval);
+      return;
+    }
 
     try {
       const res = await fetch(`${getApiBaseUrl()}/orchestrate`, {
@@ -366,20 +490,90 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
 
+      let fullText = '';
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          
+
           const chunk = decoder.decode(value, { stream: true });
+          fullText += chunk;
           setOutput(prev => prev + chunk);
         }
       }
+
+      // Never leave the canvas blank. If the stream produced nothing, say so
+      // explicitly rather than flipping silently to Idle.
+      if (!fullText.trim()) {
+        setRunError('The run completed but no output was received. The model may still be loading, may have timed out, or returned an empty response. Try running again, or pick a smaller/faster model.');
+        return;
+      }
+
+      // Once streaming completes, repair any Mermaid blocks server-side via the
+      // shared mermaid-repair library. All repair logic lives there — the
+      // frontend holds none.
+      await finalizeOutput(fullText);
     } catch (err: any) {
-      setOutput(prev => prev + `\n\n[ERROR]: ${err.message}`);
+      setRunError(err?.message || 'The run failed before any output was received.');
     } finally {
       setIsStreaming(false);
       clearInterval(interval);
+    }
+  };
+
+  const finalizeOutput = async (rawText: string) => {
+    if (!rawText.trim()) return;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/mermaid/repair`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markdown: rawText })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.changed && data.markdown) {
+          setOutput(data.markdown);
+        }
+      }
+    } catch {
+      // Non-fatal: keep the raw streamed output if repair is unavailable.
+    }
+  };
+
+  // Compile the exact prompt this composition would send — without running the
+  // model. Toggles the inline prompt panel. The full request/response exchange
+  // is in the Audit Log; this is prompt-only, on demand.
+  const togglePrompt = async () => {
+    if (showPrompt) {
+      setShowPrompt(false);
+      return;
+    }
+    setShowPrompt(true);
+    setPromptLoading(true);
+    try {
+      const payload = buildOrchestratePayload();
+      if (!payload) {
+        setComposedPrompt(null);
+        return;
+      }
+      const res = await fetch(`${getApiBaseUrl()}/compose/prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setComposedPrompt({
+          systemPrompt: data.system_prompt ?? '',
+          userPrompt: data.user_prompt ?? '',
+        });
+      } else {
+        setComposedPrompt(null);
+      }
+    } catch {
+      setComposedPrompt(null);
+    } finally {
+      setPromptLoading(false);
     }
   };
 
@@ -394,6 +588,13 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
   };
 
   return (
+    <>
+      <ScreenIntro id="testbench" title="🧪 Test Bench — run a composition against a real task">
+        Pick (or load) a Persona + Specialization + Skill, choose a <strong>Goal</strong> (the task the actor
+        performs), load one of its <strong>sample inputs</strong> or write your own, pick a model, and run. The
+        goal is logged with each run so you can track and tune per goal. The system prompt is compiled from your
+        building blocks on the server; here you provide the task and watch the output stream back.
+      </ScreenIntro>
     <div className="split-view" style={{ gridTemplateColumns: '430px 1fr' }}>
       {/* Sidebar Controls */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -449,7 +650,7 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
           {/* Persona Selector */}
           <div className="form-group">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <label>1. Persona (Base Identity)</label>
+              <label>1. Persona (Base Identity)<HelpTip text="WHO is answering — the role the model adopts, with its concerns, vocabulary, and quality bar (e.g. Software Architect)." /></label>
               {actors.length > 0 && (
                 <select 
                   value={selectedActorId} 
@@ -476,7 +677,7 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
           {/* Specialization Selector */}
           <div className="form-group">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <label>2. Specialization (Expertise)</label>
+              <label>2. Specialization (Expertise)<HelpTip text="WITH what expertise — domain-specific knowledge layered on the persona (e.g. AWS services and patterns)." /></label>
               {specializations.length > 0 && (
                 <select 
                   value={selectedSpecId} 
@@ -498,7 +699,7 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
           {/* Skill Selector */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <label>3. Skill (Output Format)</label>
+              <label>3. Skill (Output Format)<HelpTip text="WHAT the model produces and in what form — the output format and quality rules (e.g. a valid Mermaid diagram)." /></label>
               {skills.length > 0 && (
                 <select 
                   value={selectedSkillId} 
@@ -526,22 +727,11 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
         <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--accent-color)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              📎 Supplemental Reference Material / Grading Rubric
+              📎 {supplementalLabel || 'Supplemental Reference Material'}
+              <HelpTip text="Optional reference material for the goal — a grading rubric, coding standard, reference spec, etc. Provided alongside the input so the model works against your criteria." />
             </label>
 
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              {/* Preset Rubrics Selector */}
-              <select 
-                onChange={e => setSupplementalRef(e.target.value)} 
-                disabled={isStreaming}
-                style={{ width: 'auto', fontSize: '12px', padding: '3px 8px' }}
-              >
-                <option value="">Sample Rubrics...</option>
-                {SAMPLE_RUBRICS.map((r, i) => (
-                  <option key={i} value={r.content}>{r.name}</option>
-                ))}
-              </select>
-
               {/* Upload File Button */}
               <input 
                 type="file" 
@@ -556,7 +746,7 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isStreaming}
               >
-                📁 Upload Rubric / Reference File
+                📁 Upload Reference File
               </button>
             </div>
           </div>
@@ -564,7 +754,7 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
           <textarea 
             value={supplementalRef}
             onChange={e => setSupplementalRef(e.target.value)}
-            placeholder="Paste or upload supplemental evaluation material (e.g. Grading Rubric, Coding Standard, Architecture Guidelines, Reference Answer)..."
+            placeholder="Optional: paste or upload reference material for this goal (e.g. a grading rubric, coding standard, architecture guidelines, or reference answer)..."
             disabled={isStreaming}
             style={{ minHeight: '90px', fontFamily: 'Geist Mono, monospace', fontSize: '12px' }}
           />
@@ -579,26 +769,86 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
         {/* Input Payload Panel */}
         <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Raw Input Payload / Student Submission
+                Raw Input Payload
               </label>
+
+              {/* Goal selector — the task this actor is asked to achieve. Its
+                  key is logged as the audit call_type (tuning/tracking unit). */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>LLM Goal Tag:</span>
-                <input 
-                  type="text" 
-                  value={callType} 
-                  onChange={e => setCallType(e.target.value)}
-                  placeholder="e.g. evaluate_student_rubric"
-                  disabled={isStreaming}
-                  style={{ width: '200px', padding: '2px 8px', fontSize: '12px' }}
-                />
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  Goal<HelpTip text="The task this actor is asked to perform. Its key is logged so runs can be tracked and the prompt tuned per goal. Selecting a goal loads its sample inputs." />:
+                </span>
+                {advancedGoal ? (
+                  <input
+                    type="text"
+                    value={callType}
+                    onChange={e => setCallType(e.target.value)}
+                    placeholder="custom goal key"
+                    disabled={isStreaming}
+                    style={{ width: '200px', padding: '2px 8px', fontSize: '12px' }}
+                  />
+                ) : (
+                  <select
+                    value={selectedGoalId}
+                    disabled={isStreaming}
+                    onChange={e => {
+                      const g = goals.find(x => x.id === e.target.value);
+                      if (g) applyGoal(g);
+                    }}
+                    style={{ width: 'auto', fontSize: '12px', padding: '2px 8px' }}
+                    title="Select a goal for this domain/actor"
+                  >
+                    <option value="">Select a goal…</option>
+                    {goalsForContext(selectedDomainId, selectedActorId).map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setAdvancedGoal(!advancedGoal)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
+                  title="Toggle a custom goal key"
+                >
+                  {advancedGoal ? 'pick goal' : 'custom'}
+                </button>
               </div>
+
+              {/* Samples for the selected goal. */}
+              {(() => {
+                const g = goals.find(x => x.id === selectedGoalId);
+                if (!g || g.samples.length === 0) return null;
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Sample:</span>
+                    <select
+                      value=""
+                      disabled={isStreaming}
+                      onChange={e => {
+                        const idx = parseInt(e.target.value, 10);
+                        if (!Number.isNaN(idx) && g.samples[idx]) applyGoalSample(g.samples[idx]);
+                      }}
+                      style={{ width: 'auto', fontSize: '12px', padding: '2px 8px' }}
+                      title="Load a sample input for this goal"
+                    >
+                      <option value="">Load sample input…</option>
+                      {g.samples.map((s, i) => (
+                        <option key={i} value={i}>{s.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })()}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Model Provider:</span>
               <select value={modelId} onChange={e => setModelId(e.target.value)} disabled={isStreaming} style={{ width: 'auto', padding: '4px 10px' }}>
+                {modelId === '' && (
+                  <option value="">Active Default</option>
+                )}
                 {availableModelOptions.map(opt => (
                   <option key={opt.id} value={opt.model_id}>{opt.name}</option>
                 ))}
@@ -609,7 +859,7 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
           <textarea 
             value={rawRequirements}
             onChange={e => setRawRequirements(e.target.value)}
-            placeholder="Enter the raw student answer or project payload for the actor to process..."
+            placeholder="Enter the task for the actor to perform, or load a sample input for the selected goal..."
             disabled={isStreaming}
             style={{ minHeight: '90px' }}
           />
@@ -625,24 +875,161 @@ export default function TestBench({ activeComposition, initialPrompt }: { active
 
         {/* Execution Canvas Output */}
         <div className="glass-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', gap: '8px', flexWrap: 'wrap' }}>
             <h2 style={{ fontSize: '16px' }}>Execution Canvas</h2>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {/* Raw / Rendered toggle */}
+              <div style={{ display: 'inline-flex', border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'hidden' }}>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('rendered')}
+                  style={{
+                    padding: '4px 10px', fontSize: '12px', border: 'none', cursor: 'pointer',
+                    background: viewMode === 'rendered' ? 'var(--accent-color)' : 'transparent',
+                    color: viewMode === 'rendered' ? 'var(--bg-primary)' : 'var(--text-secondary)'
+                  }}
+                >
+                  Rendered
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('raw')}
+                  style={{
+                    padding: '4px 10px', fontSize: '12px', border: 'none', cursor: 'pointer',
+                    background: viewMode === 'raw' ? 'var(--accent-color)' : 'transparent',
+                    color: viewMode === 'raw' ? 'var(--bg-primary)' : 'var(--text-secondary)'
+                  }}
+                >
+                  Raw
+                </button>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ padding: '4px 10px', fontSize: '12px' }}
+                onClick={togglePrompt}
+                disabled={isStreaming}
+                title="Show the exact composed prompt this composition would send to the LLM (the full request/response is in the Audit Log)"
+              >
+                {showPrompt ? '🔎 Hide prompt' : '🔎 View prompt'}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ padding: '4px 10px', fontSize: '12px' }}
+                onClick={downloadMarkdown}
+                disabled={isStreaming || !hasRun || !output.trim()}
+                title="Download output as a .md file"
+              >
+                ⬇ Download .md
+              </button>
               <span className={`badge ${isStreaming ? 'active' : ''}`}>
                 {isStreaming ? 'Streaming' : 'Idle'}
               </span>
-              <span className="badge">{(duration / 1000).toFixed(1)}s</span>
             </div>
           </div>
-          <div 
+
+          {/* Inline prompt visibility — the exact composed prompt this
+              composition would send. Prompt-only; the full request/response
+              exchange is in the Audit Log. */}
+          {showPrompt && (
+            <div className="glass-panel" style={{ padding: '12px 16px', marginBottom: '10px', display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(0,0,0,0.2)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                <strong style={{ color: 'var(--accent-color)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Composed prompt</strong>
+                <span style={{ marginLeft: 'auto' }}>the full request &amp; response are in the Audit Log</span>
+              </div>
+              {promptLoading ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                  <span className="spinner" aria-hidden="true" /> Compiling prompt…
+                </div>
+              ) : composedPrompt ? (
+                <>
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--accent-color)', textTransform: 'uppercase' }}>System Prompt</label>
+                    <pre className="prompt-preview-box" style={{ maxHeight: '220px', fontSize: '11px', marginTop: '4px', whiteSpace: 'pre-wrap' }}>{composedPrompt.systemPrompt}</pre>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--accent-color)', textTransform: 'uppercase' }}>User Prompt</label>
+                    <pre className="prompt-preview-box" style={{ maxHeight: '180px', fontSize: '11px', marginTop: '4px', whiteSpace: 'pre-wrap' }}>{composedPrompt.userPrompt}</pre>
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  Could not compile the prompt. Check the Domain Parameters JSON is valid.
+                </div>
+              )}
+            </div>
+          )}
+          {/* Error banner — prominent, never silent. */}
+          {runError && (
+            <div
+              className="glass-panel"
+              style={{
+                padding: '12px 16px',
+                marginBottom: '10px',
+                borderLeft: '3px solid #e5484d',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: '12px',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#e5484d', marginBottom: '4px' }}>
+                  ⚠️ Run did not complete
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  {runError}
+                </div>
+              </div>
+              <button
+                onClick={() => setRunError(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '16px' }}
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </div>
+          )}
+          <div
             ref={outputRef}
-            className="prompt-preview-box" 
-            style={{ flex: 1, minHeight: '300px' }}
+            className="prompt-preview-box"
+            style={{ flex: 1, minHeight: '300px', overflowY: 'auto' }}
           >
-            {output}
+            {/* While streaming, show raw text as it arrives. If nothing has
+                arrived yet, show an explicit working indicator so a long cold
+                start never looks like a hang. */}
+            {isStreaming && !output.trim() ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                <span className="spinner" aria-hidden="true" />
+                <span>Running the model… large local models can take a minute or more on the first call while the model loads into memory.</span>
+              </div>
+            ) : viewMode === 'raw' || !hasRun || isStreaming ? (
+              <pre style={{ whiteSpace: 'pre-wrap', margin: 0, fontFamily: 'inherit' }}>{output}</pre>
+            ) : (
+              <MarkdownView source={output} dark />
+            )}
+          </div>
+          {/* Elapsed-time footer. Pinned to the bottom and right-aligned with a
+              fixed-width, tabular figure so the changing value never shifts
+              other controls. */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: '10px', paddingTop: '8px', borderTop: '1px solid var(--border-color)' }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Elapsed:&nbsp;</span>
+            <span
+              style={{
+                fontSize: '12px',
+                color: 'var(--text-secondary)',
+                fontVariantNumeric: 'tabular-nums',
+                minWidth: '56px',
+                textAlign: 'right',
+              }}
+            >
+              {(duration / 1000).toFixed(1)}s
+            </span>
           </div>
         </div>
       </div>
     </div>
+    </>
   );
 }

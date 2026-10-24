@@ -11,6 +11,8 @@ from src.actor_factory.models.core import (
     Skill,
     Specialization,
     Composition,
+    Goal,
+    Sample,
     LLMProviderConfig,
 )
 from src.actor_factory.storage.base import IStorageLayer
@@ -97,6 +99,18 @@ class SQLiteStorage(IStorageLayer):
                     actor_id TEXT NOT NULL,
                     skill_ids_json TEXT NOT NULL,
                     specialization_ids_json TEXT NOT NULL
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS goals (
+                    id TEXT PRIMARY KEY,
+                    key TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    domain_id TEXT,
+                    actor_ids_json TEXT NOT NULL,
+                    suggested_skill_id TEXT,
+                    samples_json TEXT NOT NULL
                 )
             """)
             cursor.execute("""
@@ -435,6 +449,66 @@ class SQLiteStorage(IStorageLayer):
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM compositions WHERE id = ?", (str(comp_id),))
+            conn.commit()
+
+    # ──────────────────────────────────────────────
+    # GOAL CRUD
+    # ──────────────────────────────────────────────
+    def _row_to_goal(self, row) -> Goal:
+        return Goal(
+            id=UUID(row[0]),
+            key=row[1],
+            name=row[2],
+            description=row[3] or "",
+            domain_id=UUID(row[4]) if row[4] else None,
+            actor_ids=[UUID(a) for a in json.loads(row[5] or "[]")],
+            suggested_skill_id=UUID(row[6]) if row[6] else None,
+            samples=[Sample(**s) for s in json.loads(row[7] or "[]")],
+        )
+
+    def list_goals(self) -> List[Goal]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, key, name, description, domain_id, actor_ids_json, "
+                "suggested_skill_id, samples_json FROM goals"
+            )
+            return [self._row_to_goal(row) for row in cursor.fetchall()]
+
+    def get_goal(self, goal_id: UUID) -> Optional[Goal]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, key, name, description, domain_id, actor_ids_json, "
+                "suggested_skill_id, samples_json FROM goals WHERE id = ?",
+                (str(goal_id),),
+            )
+            row = cursor.fetchone()
+            return self._row_to_goal(row) if row else None
+
+    def save_goal(self, goal: Goal) -> None:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT OR REPLACE INTO goals (id, key, name, description, domain_id, "
+                "actor_ids_json, suggested_skill_id, samples_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    str(goal.id),
+                    goal.key,
+                    goal.name,
+                    goal.description,
+                    str(goal.domain_id) if goal.domain_id else None,
+                    json.dumps([str(a) for a in goal.actor_ids]),
+                    str(goal.suggested_skill_id) if goal.suggested_skill_id else None,
+                    json.dumps([s.model_dump(mode="json") for s in goal.samples]),
+                ),
+            )
+            conn.commit()
+
+    def delete_goal(self, goal_id: UUID) -> None:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM goals WHERE id = ?", (str(goal_id),))
             conn.commit()
 
     # ──────────────────────────────────────────────

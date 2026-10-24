@@ -10,6 +10,7 @@ from src.actor_factory.models.core import (
     Skill,
     Specialization,
     Composition,
+    Goal,
     LLMProviderConfig,
 )
 
@@ -101,6 +102,23 @@ class IStorageLayer(ABC):
 
     @abstractmethod
     def delete_composition(self, comp_id: UUID) -> None:
+        pass
+
+    # ── Goal ──
+    @abstractmethod
+    def list_goals(self) -> List[Goal]:
+        pass
+
+    @abstractmethod
+    def get_goal(self, goal_id: UUID) -> Optional[Goal]:
+        pass
+
+    @abstractmethod
+    def save_goal(self, goal: Goal) -> None:
+        pass
+
+    @abstractmethod
+    def delete_goal(self, goal_id: UUID) -> None:
         pass
 
     # ── LLM Provider Config ──

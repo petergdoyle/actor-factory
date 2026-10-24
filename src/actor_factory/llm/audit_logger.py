@@ -81,31 +81,63 @@ def check_and_rollover_archives():
                 print(f"Error archiving log file {filename}: {e}")
 
 
+# Current canonical schema version for the audit record. Bump on breaking
+# changes to the record shape so a reader can adapt.
+SCHEMA_VERSION = "1.0"
+
+
 def log_llm_call(
+    *,
+    # ── Call context (why) ──────────────────────────────────────────────────
     call_type: str,
-    call_id: str,
-    domain_context: Dict[str, Any],
-    prompt_modifiers: Dict[str, Any],
-    provider: str,
-    model: str,
-    system_prompt: str,
-    user_prompt: str,
-    response_text: str,
-    duration_ms: int,
-    tokens: Optional[Dict[str, int]] = None,
-    validation_passed: bool = True
+    call_id: str = "",
+    context: Optional[Dict[str, Any]] = None,
+    goal: Optional[Dict[str, Any]] = None,
+    # ── Provenance (which code/prompt) ──────────────────────────────────────
+    actor: str = "",
+    catalog_version: Optional[str] = None,
+    construction: Optional[Dict[str, Any]] = None,
+    # ── Model (what answered) ───────────────────────────────────────────────
+    provider: str = "",
+    model: str = "",
+    model_params: Optional[Dict[str, Any]] = None,
+    # ── Inputs (what was asked) ─────────────────────────────────────────────
+    system_prompt: str = "",
+    user_prompt: str = "",
+    # ── Response (what came back) ───────────────────────────────────────────
+    response_text: str = "",
+    parsed: Optional[Any] = None,
+    confidence: Optional[Any] = None,
+    flags: Optional[List[Any]] = None,
+    # ── Stats (how it performed) ────────────────────────────────────────────
+    duration_ms: int = 0,
+    tokens: Optional[Dict[str, Any]] = None,
+    finish_reason: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
+    """Log one LLM call as a **canonical** record (schema v1.0).
+
+    Five groups: ``context`` · ``provenance`` · ``model`` · ``inputs`` ·
+    ``response`` · ``stats``. Writes one JSON object per line to the daily JSONL
+    file; auto-archives past days to ``.jsonl.gz``. Fail-open: a write/config
+    error never raises to the caller.
+
+    ``tokens`` may carry an ``approximate`` flag; if omitted entirely it is
+    estimated by word count and marked approximate.
     """
-    Logs a single LLM execution to daily JSONL file. Auto-archives past log files into .jsonl.gz.
-    """
-    config = get_audit_config()
+    try:
+        config = get_audit_config()
+    except Exception:
+        config = {"enabled": True, "disabled_call_types": []}
+
     if not config.get("enabled", True):
         return None
-
     if call_type in config.get("disabled_call_types", []):
         return None
 
-    check_and_rollover_archives()
+    try:
+        check_and_rollover_archives()
+    except Exception:
+        pass
 
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y-%m-%d")
@@ -118,38 +150,57 @@ def log_llm_call(
         tokens = {
             "prompt": prompt_tokens,
             "completion": completion_tokens,
-            "total": prompt_tokens + completion_tokens
+            "total": prompt_tokens + completion_tokens,
+            "approximate": True,
         }
 
     entry = {
+        "schema_version": SCHEMA_VERSION,
         "id": f"{time_str}_{call_type}_{git_info['sha']}",
         "timestamp": now.isoformat(),
-        "duration_ms": duration_ms,
-        "git": git_info,
-        "call_type": call_type,
-        "call_id": call_id,
-        "domain_context": domain_context,
-        "prompt_construction": {
-            "template_used": "persona_skill_specialization_matrix",
-            "modifiers": prompt_modifiers
+        # 1. Call context — why the call happened.
+        "context": {
+            "call_type": call_type,
+            "call_id": call_id,
+            "goal": goal or {},
+            **(context or {}),
         },
-        "llm": {
+        # 2. Provenance — which code + prompt produced it.
+        "provenance": {
+            "git": git_info,
+            "actor": actor,
+            "catalog_version": catalog_version,
+            "construction": construction or {},
+        },
+        # 3. Model — what answered.
+        "model": {
             "provider": provider,
-            "model": model,
+            "name": model,
+            "params": model_params or {},
+        },
+        # 4. Inputs — what was asked.
+        "inputs": {
             "system_prompt": system_prompt,
             "user_prompt": user_prompt,
-            "response": response_text,
-            "tokens": tokens
         },
-        "post_processing": {
-            "sanitizer_applied": False,
-            "validation_passed": validation_passed,
-            "retry_count": 0
-        }
+        # 5. Response — what came back.
+        "response": {
+            "raw": response_text,
+            "parsed": parsed,
+            "confidence": confidence,
+            "flags": flags or [],
+        },
+        # 6. Stats — how it performed.
+        "stats": {
+            "tokens": tokens,
+            "duration_ms": duration_ms,
+            "finish_reason": finish_reason,
+        },
     }
 
     log_filepath = os.path.join(AUDIT_DIR, f"{date_str}.jsonl")
     try:
+        _ensure_directories()
         with open(log_filepath, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
     except Exception as e:
@@ -223,6 +274,38 @@ def query_audit_logs(
 
     entries.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
     return entries[:limit]
+
+
+def distinct_call_types(limit_files: int = 14) -> List[str]:
+    """Scan recent log files (live + archives) and return the distinct call_types
+    that actually appear. Reads the canonical ``context.call_type`` with a
+    fallback to the legacy top-level ``call_type``. Bounded to the most recent
+    ``limit_files`` days so it stays cheap."""
+    _ensure_directories()
+    seen: set[str] = set()
+    files = []
+    for fp in glob.glob(os.path.join(AUDIT_DIR, "*.jsonl")):
+        files.append((os.path.basename(fp), fp, False))
+    for fp in glob.glob(os.path.join(ARCHIVE_DIR, "*.jsonl.gz")):
+        files.append((os.path.basename(fp), fp, True))
+    files.sort(key=lambda x: x[0], reverse=True)
+    for _, filepath, is_gz in files[:limit_files]:
+        try:
+            open_fn = gzip.open if is_gz else open
+            with open_fn(filepath, "rt", encoding="utf-8") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        e = json.loads(line)
+                    except Exception:
+                        continue
+                    ct = (e.get("context") or {}).get("call_type") or e.get("call_type")
+                    if ct:
+                        seen.add(ct)
+        except Exception:
+            continue
+    return sorted(seen)
 
 
 def list_log_dates() -> List[Dict[str, Any]]:

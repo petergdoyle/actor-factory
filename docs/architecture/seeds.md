@@ -323,7 +323,7 @@ Pre-composed team personas link an **Actor** with specific **Skills** and **Spec
 
 | Config ID | Name | Provider Type | Base URL / Host | Default Model | Initial Status | Available Models |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `ollama_local` | Ollama (Local) | `ollama` | `http://localhost:11434` | `gemma4:12b` | 🟢 Active | `gemma4:12b`, `llama3`, `llama3.2`, `mistral`, `mermaid-fixer` |
+| `ollama_local` | Ollama (Local) | `ollama` | `http://localhost:11434` | `gemma3:12b` | 🟢 Active | `gemma3:12b`, `llama3.2:latest` |
 | `ollama_remote` | Ollama (Remote) | `ollama` | `http://192.168.1.100:11434` | `llama3` | ⚠️ Unconfigured | N/A |
 | `openai` | OpenAI API | `openai` | `https://api.openai.com/v1` | `gpt-4o` | ⚠️ Unconfigured | `gpt-4o`, `gpt-4o-mini`, `o1`, `o3-mini` |
 | `anthropic` | Anthropic Claude | `anthropic` | `https://api.anthropic.com` | `claude-3-5-sonnet` | ⚠️ Unconfigured | `claude-3-5-sonnet`, `claude-3-5-haiku`, `claude-3-opus` |

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from 'react';
 import { getApiBaseUrl } from '../utils/api';
+import ScreenIntro from './ScreenIntro';
 
 export interface Composition {
   id?: string;
@@ -144,6 +145,13 @@ export default function Composer({ onSelectForTesting }: { onSelectForTesting?: 
   };
 
   return (
+    <>
+      <ScreenIntro id="composer" title="🔗 Composer — design and read the system prompt">
+        Combine a <strong>Persona × Specialization × Skill</strong> and see the exact compiled system prompt the
+        model will receive. Save useful combinations as reusable <strong>Composition Profiles</strong>, or send one
+        straight to the Test Bench to run it. This is where you design the instructions; the Test Bench is where you
+        run them against a real task.
+      </ScreenIntro>
     <div className="split-view" style={{ gridTemplateColumns: '400px 1fr' }}>
       {/* Matrix Ingredient Selection Column */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -278,5 +286,6 @@ export default function Composer({ onSelectForTesting }: { onSelectForTesting?: 
         </div>
       </div>
     </div>
+    </>
   );
 }
